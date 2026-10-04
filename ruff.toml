@@ -1,0 +1,25 @@
+# Configuracion de lint para todo el repositorio.
+#
+# Una sola fuente de verdad a proposito: con un archivo por subproyecto, `ruff check`
+# aplica reglas distintas segun desde donde se invoque, y el resultado es que el CI y
+# el editor de quien escribe el codigo discrepan.
+#
+# Las reglas estan fijadas explicitamente. Depender de los defaults de ruff significa
+# que una actualizacion de la herramienta puede poner rojo un pipeline sin que nadie
+# cambie codigo, y eso ensenia al equipo a ignorar el linter.
+
+line-length = 110
+target-version = "py310"
+
+[lint]
+select = ["E", "F", "I", "UP", "B", "C4", "SIM", "ISC", "RUF"]
+
+[lint.per-file-ignores]
+# En los tests, `dict(...)` con kwargs se lee mejor que un literal para armar
+# variaciones de un mismo objeto.
+"**/tests/*" = ["C408"]
+
+[lint.isort]
+# Sin esto, ruff trata `faro_governance` como dependencia de terceros y lo mezcla con
+# pytest en el mismo bloque de imports.
+known-first-party = ["faro_governance"]

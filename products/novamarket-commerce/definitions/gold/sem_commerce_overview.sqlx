@@ -1,0 +1,55 @@
+config {
+  type: "view",
+  schema: constants.datasets.gold,
+  description: "Capa semantica de comercio para consumo por agentes de IA. Una vista ancha y explicita, con nombres que se leen como lenguaje natural y una sola definicion de cada metrica. Es la unica superficie que los agentes tienen permitido consultar.",
+  columns: {
+    sale_date: "Dia calendario de la venta en zona horaria America/Santiago.",
+    department_name: "Departamento del catalogo al que pertenece el producto.",
+    product_name: "Nombre comercial del producto.",
+    net_sales_amount: "Monto neto vendido ese dia para ese producto, excluyendo ordenes canceladas. Es LA cifra de venta: no existe otra definicion valida.",
+    item_quantity: "Unidades vendidas.",
+    order_quantity: "Cantidad de ordenes distintas que incluyeron el producto.",
+    customer_quantity: "Clientes distintos que compraron el producto ese dia.",
+    average_unit_price_amount: "Precio unitario promedio ponderado por unidades vendidas.",
+    conversion_percentage: "Porcentaje de sesiones del departamento que terminaron en compra ese dia."
+  },
+  tags: ["gold", "semantic", "daily"]
+}
+
+/*
+ * Por que existe esta vista si las tablas gold ya estan bien nombradas y documentadas.
+ *
+ * Un agente de IA lee el esquema como si fuera documentacion y actua sobre lo que
+ * entiende. Un analista humano que encuentra dos tablas con cifras de venta pregunta
+ * cual usar. Un agente no pregunta: elige, y devuelve un numero con la misma seguridad
+ * con que devolveria el correcto.
+ *
+ * La vista resuelve eso reduciendo el espacio de eleccion a uno. No agrega informacion
+ * nueva; quita ambiguedad, que para un agente es lo mismo que agregar precision.
+ *
+ * Tres reglas al construirla:
+ *
+ *  1. Una sola definicion por metrica. Si `net_sales_amount` aparece aqui, no debe
+ *     haber otra columna en la superficie expuesta que tambien se llame "venta".
+ *  2. Nada que identifique personas. Los agentes son el consumidor menos predecible de
+ *     la plataforma; la superficie que ven no debe contener nada que no pueda salir en
+ *     una respuesta.
+ *  3. Descripciones escritas para ser leidas por un modelo: explicitas sobre unidad,
+ *     grano y exclusiones. "Es LA cifra de venta" es una instruccion, y esta ahi a
+ *     proposito.
+ */
+
+SELECT
+  sls.sale_date,
+  sls.department_name,
+  sls.product_name,
+  sls.net_sales_amount,
+  sls.item_quantity,
+  sls.order_quantity,
+  sls.customer_quantity,
+  sls.average_unit_price_amount,
+  fnl.overall_conversion_percentage AS conversion_percentage
+FROM ${ref("dmt_sales_daily")} AS sls
+LEFT JOIN ${ref("dmt_funnel_daily")} AS fnl
+  ON  fnl.funnel_date = sls.sale_date
+  AND fnl.department_name = sls.department_name

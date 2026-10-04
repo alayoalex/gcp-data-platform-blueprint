@@ -1,0 +1,92 @@
+# Contrato de la capa semantica.
+#
+# Es el contrato mas importante de la plataforma aunque la vista no calcule nada nuevo,
+# porque es la unica superficie que los agentes de IA consultan. Un cambio aqui no rompe
+# un dashboard: cambia las respuestas que el agente da, silenciosamente y sin que nadie
+# lo note hasta que alguien verifica un numero.
+
+apiVersion: faro/v1
+kind: DataContract
+
+metadata:
+  name: sem_commerce_overview
+  product: novamarket-commerce
+  version: 1.0.0
+  owner: equipo-comercial@novamarket.cl
+  steward: ana.morales@novamarket.cl
+  domain: commerce
+
+spec:
+  asset: novamarket-data-prod-c3d4.commerce_gold.sem_commerce_overview
+  layer: GOLD
+  description: >-
+    Capa semantica para consumo por agentes de IA. Una sola definicion de cada metrica,
+    nombres legibles como lenguaje natural, y ningun dato que identifique personas.
+  grain: [sale_date, department_name, product_name]
+  classification: INTERNAL
+
+  freshness:
+    max_delay: P1D
+    schedule: "0 7 * * *"
+    timezone: America/Santiago
+
+  retention: P5Y
+
+  quality:
+    - rule: unique
+      columns: [sale_date, department_name, product_name]
+    - rule: no_personal_data
+      description: Ninguna columna puede clasificarse por encima de INTERNAL.
+
+  slo:
+    availability: 0.99
+    max_incident_resolution: PT4H
+
+  consumers:
+    - agente-analitica-sa@novamarket-data-prod-c3d4.iam.gserviceaccount.com
+
+  # Ventana mas larga que el resto: los prompts y las herramientas de los agentes
+  # referencian estos nombres, y actualizarlos exige coordinar con quien opera el agente.
+  deprecation_notice: P60D
+
+  schema:
+    - name: sale_date
+      type: DATE
+      required: true
+      classification: INTERNAL
+      description: Dia calendario de la venta en zona horaria America/Santiago.
+    - name: department_name
+      type: STRING
+      required: true
+      classification: INTERNAL
+      description: Departamento del catalogo al que pertenece el producto.
+    - name: product_name
+      type: STRING
+      required: true
+      classification: INTERNAL
+      description: Nombre comercial del producto.
+    - name: net_sales_amount
+      type: NUMERIC
+      required: true
+      classification: INTERNAL
+      description: Monto neto vendido, excluyendo ordenes canceladas. Es LA cifra de venta.
+    - name: item_quantity
+      type: INT64
+      classification: INTERNAL
+      description: Unidades vendidas.
+    - name: order_quantity
+      type: INT64
+      classification: INTERNAL
+      description: Cantidad de ordenes distintas que incluyeron el producto.
+    - name: customer_quantity
+      type: INT64
+      classification: INTERNAL
+      description: Clientes distintos que compraron el producto ese dia.
+    - name: average_unit_price_amount
+      type: NUMERIC
+      classification: INTERNAL
+      description: Precio unitario promedio ponderado por unidades vendidas.
+    - name: conversion_percentage
+      type: NUMERIC
+      classification: INTERNAL
+      description: Porcentaje de sesiones del departamento que terminaron en compra ese dia.

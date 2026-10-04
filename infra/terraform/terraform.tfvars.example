@@ -1,0 +1,30 @@
+# Copiar a terraform.tfvars y completar. El archivo real NO se versiona: contiene
+# nombres de grupos internos y, en el caso de la conexion al origen, referencias a
+# secretos. Lo que si se versiona es este ejemplo, para que quien llegue manianas
+# sepa que hay que completar.
+
+project_id            = "novamarket-data-dev-a1b2"
+governance_project_id = "novamarket-governance-a1b2"
+region                = "us-central1"
+environment           = "dev"
+
+product_name = "novamarket-commerce"
+data_domain  = "commerce"
+
+owner_group           = "datos-comercio@novamarket.cl"
+analyst_group         = "analistas@novamarket.cl"
+privacy_officer_group = "privacidad@novamarket.cl"
+
+# En dev se permite destruir para poder iterar. En prod, jamas.
+deletion_protection = false
+
+replicated_tables = [
+  "users",
+  "user_profiles",
+  "orders",
+  "order_items",
+  "products",
+  "aisles",
+  "departments",
+  "user_events",
+]

@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Artefactos del gate: se generan en cada corrida de CI, no se versionan.
+compilation.json
+gate-report.md
+gl-code-quality-report.json
+
+# Terraform. `terraform.tfvars` contiene nombres de grupos internos y referencias a
+# secretos; el ejemplo si se versiona.
+.terraform/
+*.tfstate
+*.tfstate.*
+terraform.tfvars
+plan.tfplan
+.terraform.lock.hcl
+
+# Dataform
+products/*/node_modules/
+products/*/.df-credentials.json
+products/*/.dataform/
+
+# Ids de policy tags generados por el pipeline de infraestructura.
+products/*/includes/policy_tags.generated.json

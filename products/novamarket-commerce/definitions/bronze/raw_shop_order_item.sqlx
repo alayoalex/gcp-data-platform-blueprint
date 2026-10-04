@@ -1,0 +1,21 @@
+js {
+  const { cdcLanding } = require("includes/bronze.js");
+
+  cdcLanding({
+    name: "raw_shop_order_item",
+    sourceTable: "order_items",
+    primaryKey: "id",
+    description: "Copia fiel del detalle de productos de cada orden.",
+    tags: ["hourly"],
+    columns: {
+    id: "Identificador de la linea de detalle en el origen.",
+    order_id: "Identificador de la orden a la que pertenece la linea.",
+    product_id: "Identificador del producto comprado.",
+    add_to_cart_order: "Posicion en que el producto fue agregado al carro.",
+    reordered: "Indica si el producto ya habia sido comprado antes por la cuenta.",
+    quantity: "Unidades compradas del producto en esta linea.",
+    unit_price: "Precio unitario aplicado en el momento de la compra.",
+    created_at: "Momento de creacion de la linea en el origen."
+    },
+  });
+}

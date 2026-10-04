@@ -1,0 +1,60 @@
+config {
+  type: "incremental",
+  schema: constants.datasets.silver,
+  description: "Ordenes de compra conformadas: nombres corregidos, tipos normalizados, cliente seudonimizado y fecha de negocio resuelta. Un registro por orden.",
+  columns: {
+    order_key: "Identificador de la orden.",
+    customer_key: "Clave seudonimizada del cliente que realizo la orden. Une con mst_customer.",
+    order_date: "Dia calendario de la orden en la zona horaria del negocio.",
+    order_datetime: "Momento exacto de la orden (UTC).",
+    order_sequence_number: "Numero correlativo de la orden para ese cliente. El origen lo llama order_number.",
+    order_day_of_week: "Dia de la semana de la orden, 0 = domingo. El origen lo llama order_dow.",
+    order_hour_of_day: "Hora del dia de la orden, 0-23. El origen lo llama order_hour.",
+    days_since_prior_order_quantity: "Dias transcurridos desde la orden anterior del mismo cliente.",
+    order_status_code: "Estado de la orden: completed, cancelled, pending.",
+    order_total_amount: "Monto total de la orden.",
+    is_cancelled_flag: "Indica si la orden fue cancelada.",
+    ingestion_datetime: "Momento en que la plataforma ingesto la fila (UTC)."
+  },
+  bigquery: {
+    partitionBy: "order_date",
+    clusterBy: ["customer_key"],
+    labels: { layer: "silver", product: "novamarket-commerce", contains_pii: "false" }
+  },
+  tags: ["silver", "hourly"],
+  assertions: { uniqueKey: ["order_key"], nonNull: ["order_key", "order_date"] }
+}
+
+pre_operations {
+  DECLARE reprocess_from DEFAULT (
+    ${when(incremental(),
+      `SELECT COALESCE(DATE_SUB(MAX(order_date), INTERVAL 3 DAY), DATE '2020-01-01') FROM ${self()}`,
+      `SELECT DATE '2020-01-01'`)}
+  )
+}
+
+/*
+ * La ventana de reproceso de tres dias no es arbitraria. Una orden puede cambiar de
+ * estado despues de creada (se cancela, se completa el pago), y el CDC entrega ese
+ * cambio con el timestamp original de la orden, no con el del cambio. Sin ventana,
+ * la tabla incremental nunca volveria a mirar esa particion y el estado quedaria
+ * congelado. Tres dias cubre el ciclo de pago del negocio con holgura; es un numero
+ * que se calibra con los datos, no se hereda de un tutorial.
+ */
+
+SELECT
+  ord.order_id AS order_key,
+  ${helpers.pseudonymize("ord.user_id")} AS customer_key,
+  ${helpers.businessDate("ord.created_at")} AS order_date,
+  ord.created_at AS order_datetime,
+  ord.order_number AS order_sequence_number,
+  ord.order_dow AS order_day_of_week,
+  ord.order_hour AS order_hour_of_day,
+  CAST(ord.days_since_prior AS INT64) AS days_since_prior_order_quantity,
+  ord.status AS order_status_code,
+  ord.total_amount AS order_total_amount,
+  ord.status = 'cancelled' AS is_cancelled_flag,
+  ord.ingestion_datetime
+FROM ${ref("raw_shop_order")} AS ord
+WHERE NOT ord.is_deleted_flag
+  AND ${helpers.businessDate("ord.created_at")} >= reprocess_from

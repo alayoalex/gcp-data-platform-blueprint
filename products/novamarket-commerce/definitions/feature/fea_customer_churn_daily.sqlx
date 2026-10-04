@@ -1,0 +1,126 @@
+config {
+  type: "table",
+  schema: constants.datasets.feature,
+  description: "Tabla de features para el modelo de abandono de clientes. Un registro por cliente y dia de corte, con atributos calculados solo con informacion disponible a esa fecha y la etiqueta observada 90 dias despues.",
+  columns: {
+    snapshot_date: "Fecha de corte. Todos los atributos usan exclusivamente informacion anterior o igual a esta fecha.",
+    customer_key: "Clave seudonimizada del cliente.",
+    tenure_day_quantity: "Dias transcurridos desde la creacion de la cuenta hasta la fecha de corte.",
+    recency_day_quantity: "Dias desde la ultima compra hasta la fecha de corte.",
+    order_quantity_90d: "Ordenes completadas en los 90 dias previos al corte.",
+    net_amount_90d: "Monto neto comprado en los 90 dias previos al corte.",
+    average_order_amount_90d: "Ticket promedio de los 90 dias previos.",
+    distinct_department_quantity_90d: "Departamentos distintos comprados en los 90 dias previos.",
+    reorder_percentage_90d: "Porcentaje de unidades que fueron recompra en los 90 dias previos.",
+    session_quantity_30d: "Sesiones de navegacion en los 30 dias previos.",
+    has_complete_profile_flag: "Indica si el cliente tiene el perfil de despacho completo.",
+    is_churned_flag: "Etiqueta: verdadero si el cliente no compro en los 90 dias POSTERIORES al corte."
+  },
+  bigquery: {
+    partitionBy: "snapshot_date",
+    clusterBy: ["customer_key"],
+    labels: { layer: "feature", product: "novamarket-commerce", contains_pii: "false" }
+  },
+  tags: ["feature", "weekly"],
+  assertions: { uniqueKey: ["snapshot_date", "customer_key"] }
+}
+
+/*
+ * Fuga temporal: el error que arruina modelos de churn.
+ *
+ * La tentacion es calcular las features con una consulta sobre toda la tabla y la
+ * etiqueta con otra. El resultado es un modelo con AUC 0.95 en validacion y sin valor
+ * en produccion, porque alguna feature incorporo informacion posterior al corte.
+ *
+ * Aqui la separacion es estructural, no una convencion que hay que recordar:
+ *   - features: ventana que TERMINA en snapshot_date
+ *   - etiqueta:  ventana que EMPIEZA en snapshot_date
+ * y no hay ninguna expresion que cruce esa frontera. Es verificable leyendo los BETWEEN.
+ *
+ * El ultimo corte util es hace 90 dias: antes de eso la etiqueta todavia no se puede
+ * observar. Incluir cortes mas recientes generaria filas con is_churned_flag = false
+ * que en realidad significan "aun no sabemos", y el modelo aprenderia que los clientes
+ * recientes nunca abandonan.
+ */
+
+WITH snapshot_calendar AS (
+  SELECT snapshot_date
+  FROM UNNEST(GENERATE_DATE_ARRAY(
+    DATE '2021-01-01',
+    DATE_SUB(CURRENT_DATE('${constants.businessTimezone}'), INTERVAL 90 DAY),
+    INTERVAL 7 DAY
+  )) AS snapshot_date
+),
+
+customer_snapshot AS (
+  SELECT cal.snapshot_date, cst.customer_key, cst.account_created_date, cst.has_complete_profile_flag
+  FROM snapshot_calendar AS cal
+  CROSS JOIN ${ref("mst_customer")} AS cst
+  WHERE cst.account_created_date <= cal.snapshot_date
+),
+
+purchase_features AS (
+  SELECT
+    snp.snapshot_date,
+    snp.customer_key,
+    DATE_DIFF(snp.snapshot_date, MAX(ord.order_date), DAY) AS recency_day_quantity,
+    COUNT(DISTINCT IF(ord.order_date > DATE_SUB(snp.snapshot_date, INTERVAL 90 DAY), ord.order_key, NULL)) AS order_quantity_90d,
+    SUM(IF(ord.order_date > DATE_SUB(snp.snapshot_date, INTERVAL 90 DAY), itm.line_net_amount, 0)) AS net_amount_90d,
+    COUNT(DISTINCT IF(ord.order_date > DATE_SUB(snp.snapshot_date, INTERVAL 90 DAY), prd.department_name, NULL)) AS distinct_department_quantity_90d,
+    SAFE_DIVIDE(
+      SUM(IF(ord.order_date > DATE_SUB(snp.snapshot_date, INTERVAL 90 DAY) AND itm.is_reordered_flag, itm.item_quantity, 0)),
+      NULLIF(SUM(IF(ord.order_date > DATE_SUB(snp.snapshot_date, INTERVAL 90 DAY), itm.item_quantity, 0)), 0)
+    ) AS reorder_ratio_90d
+  FROM customer_snapshot AS snp
+  JOIN ${ref("trn_order")} AS ord
+    ON ord.customer_key = snp.customer_key
+   AND ord.order_date <= snp.snapshot_date
+  JOIN ${ref("trn_order_item")} AS itm ON itm.order_key = ord.order_key
+  LEFT JOIN ${ref("mst_product")} AS prd ON prd.product_key = itm.product_key
+  WHERE NOT ord.is_cancelled_flag
+  GROUP BY snapshot_date, customer_key
+),
+
+browsing_features AS (
+  SELECT
+    snp.snapshot_date,
+    snp.customer_key,
+    COUNT(DISTINCT evt.session_key) AS session_quantity_30d
+  FROM customer_snapshot AS snp
+  JOIN ${ref("evt_session_event")} AS evt
+    ON evt.customer_key = snp.customer_key
+   AND evt.event_date BETWEEN DATE_SUB(snp.snapshot_date, INTERVAL 30 DAY) AND snp.snapshot_date
+  GROUP BY snapshot_date, customer_key
+),
+
+label AS (
+  SELECT
+    snp.snapshot_date,
+    snp.customer_key,
+    COUNT(ord.order_key) = 0 AS is_churned_flag
+  FROM customer_snapshot AS snp
+  LEFT JOIN ${ref("trn_order")} AS ord
+    ON ord.customer_key = snp.customer_key
+   AND ord.order_date > snp.snapshot_date
+   AND ord.order_date <= DATE_ADD(snp.snapshot_date, INTERVAL 90 DAY)
+   AND NOT ord.is_cancelled_flag
+  GROUP BY snapshot_date, customer_key
+)
+
+SELECT
+  snp.snapshot_date,
+  snp.customer_key,
+  DATE_DIFF(snp.snapshot_date, snp.account_created_date, DAY) AS tenure_day_quantity,
+  COALESCE(pur.recency_day_quantity, 9999) AS recency_day_quantity,
+  COALESCE(pur.order_quantity_90d, 0) AS order_quantity_90d,
+  COALESCE(pur.net_amount_90d, 0) AS net_amount_90d,
+  SAFE_DIVIDE(pur.net_amount_90d, NULLIF(pur.order_quantity_90d, 0)) AS average_order_amount_90d,
+  COALESCE(pur.distinct_department_quantity_90d, 0) AS distinct_department_quantity_90d,
+  ROUND(100 * COALESCE(pur.reorder_ratio_90d, 0), 2) AS reorder_percentage_90d,
+  COALESCE(brw.session_quantity_30d, 0) AS session_quantity_30d,
+  snp.has_complete_profile_flag,
+  lbl.is_churned_flag
+FROM customer_snapshot AS snp
+LEFT JOIN purchase_features AS pur USING (snapshot_date, customer_key)
+LEFT JOIN browsing_features AS brw USING (snapshot_date, customer_key)
+JOIN label AS lbl USING (snapshot_date, customer_key)

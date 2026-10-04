@@ -1,0 +1,21 @@
+js {
+  const { cdcLanding } = require("includes/bronze.js");
+
+  cdcLanding({
+    name: "raw_shop_product",
+    sourceTable: "products",
+    primaryKey: "product_id",
+    description: "Copia fiel del catalogo de productos de la tienda.",
+    tags: ["hourly"],
+    columns: {
+    product_id: "Identificador del producto en el origen.",
+    product_name: "Nombre comercial del producto.",
+    aisle_id: "Identificador de la categoria fina del catalogo.",
+    department_id: "Identificador de la categoria gruesa del catalogo.",
+    price: "Precio de lista vigente.",
+    is_active: "Indica si el producto esta publicado en la tienda.",
+    created_at: "Momento de alta del producto en el origen.",
+    updated_at: "Momento de la ultima modificacion en el origen."
+    },
+  });
+}

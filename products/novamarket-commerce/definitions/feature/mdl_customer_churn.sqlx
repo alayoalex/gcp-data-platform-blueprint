@@ -1,0 +1,53 @@
+config {
+  type: "operations",
+  schema: constants.datasets.feature,
+  description: "Entrena el modelo de abandono con BigQuery ML. Se reentrena semanalmente sobre la tabla de features.",
+  tags: ["feature", "weekly", "ml"],
+  dependencies: ["fea_customer_churn_daily"],
+  hasOutput: true
+}
+
+/*
+ * Por que BigQuery ML y no Vertex AI para este caso.
+ *
+ * El modelo se entrena sobre una tabla que ya esta en BigQuery, su salida se consume
+ * desde SQL, y el tamanio del problema cabe holgadamente en un boosted tree. En esas
+ * condiciones, sacar los datos a Vertex agrega infraestructura, movimiento de datos
+ * personales entre servicios y un paso de despliegue, a cambio de nada.
+ *
+ * Vertex empieza a valer la pena cuando el modelo necesita algo que BQML no da:
+ * arquitecturas propias, entrenamiento distribuido, servicio en linea con baja latencia,
+ * o un registro de modelos con gobierno propio. Empezar por BQML y migrar cuando haga
+ * falta es mas barato que al reves.
+ *
+ * DATA_SPLIT_METHOD = 'CUSTOM' y no 'AUTO_SPLIT': la particion aleatoria pondria
+ * cortes del mismo cliente en train y en test, y el modelo memorizaria clientes en vez
+ * de aprender el patron. El corte es temporal, que es como se va a usar en produccion.
+ */
+
+CREATE OR REPLACE MODEL ${self()}
+OPTIONS (
+  model_type = 'BOOSTED_TREE_CLASSIFIER',
+  input_label_cols = ['is_churned_flag'],
+  data_split_method = 'CUSTOM',
+  data_split_col = 'is_holdout_flag',
+  auto_class_weights = TRUE,
+  enable_global_explain = TRUE,
+  max_iterations = 50,
+  early_stop = TRUE
+) AS
+SELECT
+  -- `customer_key` y `snapshot_date` quedan fuera a proposito: son llaves, no senales.
+  -- El contrato lo declara en `ml.excluded_from_features`, y este SELECT lo cumple.
+  tenure_day_quantity,
+  recency_day_quantity,
+  order_quantity_90d,
+  net_amount_90d,
+  average_order_amount_90d,
+  distinct_department_quantity_90d,
+  reorder_percentage_90d,
+  session_quantity_30d,
+  has_complete_profile_flag,
+  is_churned_flag,
+  snapshot_date >= DATE_SUB(CURRENT_DATE('${constants.businessTimezone}'), INTERVAL 180 DAY) AS is_holdout_flag
+FROM ${ref("fea_customer_churn_daily")}

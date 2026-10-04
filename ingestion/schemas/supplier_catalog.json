@@ -1,0 +1,38 @@
+{
+  "target_table": "raw_supplier_catalog",
+  "write_disposition": "WRITE_TRUNCATE",
+  "schema": [
+    {
+      "name": "supplier_code",
+      "type": "STRING",
+      "mode": "REQUIRED",
+      "description": "Codigo del proveedor que envia el catalogo."
+    },
+    {
+      "name": "product_sku",
+      "type": "STRING",
+      "mode": "REQUIRED",
+      "description": "SKU del producto en el catalogo del proveedor."
+    },
+    {
+      "name": "product_name",
+      "type": "STRING",
+      "description": "Nombre del producto segun el proveedor."
+    },
+    {
+      "name": "cost_amount",
+      "type": "NUMERIC",
+      "description": "Costo unitario de compra acordado con el proveedor."
+    },
+    {
+      "name": "available_quantity",
+      "type": "INT64",
+      "description": "Unidades disponibles declaradas por el proveedor."
+    },
+    {
+      "name": "valid_from_date",
+      "type": "DATE",
+      "description": "Dia desde el que rige este precio."
+    }
+  ]
+}

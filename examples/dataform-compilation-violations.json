@@ -1,0 +1,595 @@
+{
+  "projectConfig": {
+    "defaultDatabase": "novamarket-data-prod-c3d4",
+    "defaultLocation": "us-central1"
+  },
+  "tables": [
+    {
+      "target": {
+        "database": "novamarket-data-prod-c3d4",
+        "schema": "commerce_silver",
+        "name": "mst_customer"
+      },
+      "type": "table",
+      "fileName": "definitions/silver/mst_customer.sqlx",
+      "tags": [
+        "silver",
+        "hourly"
+      ],
+      "bigquery": {
+        "labels": {
+          "layer": "silver",
+          "product": "novamarket-commerce"
+        }
+      },
+      "actionDescriptor": {
+        "description": "Maestro de clientes seudonimizado. Un registro por cuenta, con los atributos que la analitica necesita y ninguno que identifique a la persona.",
+        "columns": [
+          {
+            "path": [
+              "customer_key"
+            ],
+            "description": "Clave seudonimizada y estable de la cuenta. Es la llave de union con el resto del modelo."
+          },
+          {
+            "path": [
+              "email_domain_name"
+            ],
+            "description": "Dominio del correo de la cuenta, sin la parte local."
+          },
+          {
+            "path": [
+              "customer_city_name"
+            ],
+            "description": "Ciudad o comuna declarada en el perfil de despacho."
+          },
+          {
+            "path": [
+              "customer_region_name"
+            ],
+            "description": "Region declarada en el perfil de despacho."
+          },
+          {
+            "path": [
+              "customer_country_code"
+            ],
+            "description": "Pais del perfil en formato ISO 3166-1 alfa-2."
+          },
+          {
+            "path": [
+              "has_phone_flag"
+            ],
+            "description": "Indica si la cuenta tiene telefono registrado."
+          },
+          {
+            "path": [
+              "has_complete_profile_flag"
+            ],
+            "description": "Indica si el perfil tiene ciudad, region y pais informados."
+          },
+          {
+            "path": [
+              "is_active_flag"
+            ],
+            "description": "Indica si la cuenta esta activa en el sistema de origen."
+          },
+          {
+            "path": [
+              "account_created_date"
+            ],
+            "description": "Dia de creacion de la cuenta."
+          },
+          {
+            "path": [
+              "account_updated_datetime"
+            ],
+            "description": "Momento de la ultima modificacion de la cuenta en el origen."
+          },
+          {
+            "path": [
+              "ingestion_datetime"
+            ],
+            "description": "Momento en que la plataforma ingesto la fila (UTC)."
+          }
+        ]
+      }
+    },
+    {
+      "target": {
+        "database": "novamarket-data-prod-c3d4",
+        "schema": "commerce_silver",
+        "name": "mst_customer_identity"
+      },
+      "type": "table",
+      "fileName": "definitions/silver/mst_customer_identity.sqlx",
+      "tags": [
+        "silver",
+        "restricted",
+        "daily"
+      ],
+      "bigquery": {
+        "labels": {
+          "layer": "silver",
+          "product": "novamarket-commerce",
+          "contains_pii": "true",
+          "data_vault": "true"
+        }
+      },
+      "actionDescriptor": {
+        "description": "Boveda de identidad: el puente entre la clave seudonimizada y la persona real. No se consume desde productos analiticos.",
+        "columns": [
+          {
+            "path": [
+              "customer_key"
+            ],
+            "description": "Clave seudonimizada de la cuenta.",
+            "bigqueryPolicyTags": [
+              "projects/novamarket-governance-a1b2/locations/us-central1/taxonomies/7100000000000000001/policyTags/8100000000000000016"
+            ]
+          },
+          {
+            "path": [
+              "customer_email"
+            ],
+            "description": "Correo electronico de la cuenta.",
+            "bigqueryPolicyTags": [
+              "projects/novamarket-governance-a1b2/locations/us-central1/taxonomies/7100000000000000001/policyTags/8100000000000000012"
+            ]
+          },
+          {
+            "path": [
+              "customer_full_name"
+            ],
+            "description": "Nombre completo declarado por la persona.",
+            "bigqueryPolicyTags": [
+              "projects/novamarket-governance-a1b2/locations/us-central1/taxonomies/7100000000000000001/policyTags/8100000000000000013"
+            ]
+          },
+          {
+            "path": [
+              "customer_phone"
+            ],
+            "description": "Telefono de contacto declarado en el perfil.",
+            "bigqueryPolicyTags": [
+              "projects/novamarket-governance-a1b2/locations/us-central1/taxonomies/7100000000000000001/policyTags/8100000000000000012"
+            ]
+          },
+          {
+            "path": [
+              "customer_address_line"
+            ],
+            "description": "Direccion de despacho completa.",
+            "bigqueryPolicyTags": [
+              "projects/novamarket-governance-a1b2/locations/us-central1/taxonomies/7100000000000000001/policyTags/8100000000000000014"
+            ]
+          },
+          {
+            "path": [
+              "customer_postal_code"
+            ],
+            "description": "Codigo postal de despacho.",
+            "bigqueryPolicyTags": [
+              "projects/novamarket-governance-a1b2/locations/us-central1/taxonomies/7100000000000000001/policyTags/8100000000000000014"
+            ]
+          },
+          {
+            "path": [
+              "account_created_date"
+            ],
+            "description": "Dia de creacion de la cuenta."
+          },
+          {
+            "path": [
+              "ingestion_datetime"
+            ],
+            "description": "Momento en que la plataforma ingesto la fila (UTC)."
+          }
+        ]
+      }
+    },
+    {
+      "target": {
+        "database": "novamarket-data-prod-c3d4",
+        "schema": "commerce_gold",
+        "name": "dmt_sales_daily"
+      },
+      "type": "table",
+      "fileName": "definitions/gold/dmt_sales_daily.sqlx",
+      "tags": [
+        "gold",
+        "daily"
+      ],
+      "bigquery": {
+        "labels": {
+          "layer": "gold",
+          "product": "novamarket-commerce"
+        }
+      },
+      "actionDescriptor": {
+        "description": "Producto de datos de ventas diarias. Un registro por dia y producto, con unidades, monto neto y clientes distintos.",
+        "columns": [
+          {
+            "path": [
+              "sale_date"
+            ],
+            "description": "Dia calendario de la venta en zona horaria America/Santiago."
+          },
+          {
+            "path": [
+              "product_key"
+            ],
+            "description": "Identificador del producto vendido."
+          },
+          {
+            "path": [
+              "product_name"
+            ],
+            "description": "Nombre comercial del producto."
+          },
+          {
+            "path": [
+              "department_name"
+            ],
+            "description": "Categoria gruesa del catalogo."
+          },
+          {
+            "path": [
+              "order_quantity"
+            ],
+            "description": "Cantidad de ordenes distintas que incluyeron el producto ese dia."
+          },
+          {
+            "path": [
+              "item_quantity"
+            ],
+            "description": "Unidades del producto vendidas ese dia."
+          },
+          {
+            "path": [
+              "customer_quantity"
+            ],
+            "description": "Clientes distintos que compraron el producto ese dia."
+          },
+          {
+            "path": [
+              "average_unit_price_amount"
+            ],
+            "description": "Precio unitario promedio ponderado por unidades vendidas."
+          },
+          {
+            "path": [
+              "reordered_item_percentage"
+            ],
+            "description": "Porcentaje de unidades que corresponden a recompras del mismo cliente."
+          },
+          {
+            "path": [
+              "total"
+            ],
+            "description": "total"
+          }
+        ]
+      }
+    },
+    {
+      "target": {
+        "database": "novamarket-data-prod-c3d4",
+        "schema": "commerce_gold",
+        "name": "dmt_funnel_daily"
+      },
+      "type": "table",
+      "fileName": "definitions/gold/dmt_funnel_daily.sqlx",
+      "tags": [
+        "gold",
+        "daily"
+      ],
+      "bigquery": {
+        "labels": {
+          "layer": "gold",
+          "product": "novamarket-commerce"
+        }
+      },
+      "actionDescriptor": {
+        "description": "Embudo de conversion diario de la tienda, por dia y departamento, medido a nivel de sesion.",
+        "columns": [
+          {
+            "path": [
+              "funnel_date"
+            ],
+            "description": "Dia calendario del embudo en zona horaria America/Santiago."
+          },
+          {
+            "path": [
+              "department_name"
+            ],
+            "description": "Categoria gruesa del catalogo."
+          },
+          {
+            "path": [
+              "session_quantity"
+            ],
+            "description": "Sesiones distintas con al menos un evento ese dia."
+          },
+          {
+            "path": [
+              "view_session_quantity"
+            ],
+            "description": "Sesiones que vieron al menos un producto."
+          },
+          {
+            "path": [
+              "cart_session_quantity"
+            ],
+            "description": "Sesiones que agregaron al menos un producto al carro."
+          },
+          {
+            "path": [
+              "checkout_session_quantity"
+            ],
+            "description": "Sesiones que iniciaron el proceso de pago."
+          },
+          {
+            "path": [
+              "purchase_session_quantity"
+            ],
+            "description": "Sesiones que completaron una compra."
+          },
+          {
+            "path": [
+              "view_to_cart_percentage"
+            ],
+            "description": "Porcentaje de sesiones con vista que llegaron al carro."
+          },
+          {
+            "path": [
+              "cart_to_purchase_percentage"
+            ],
+            "description": "Porcentaje de sesiones con carro que completaron la compra."
+          },
+          {
+            "path": [
+              "overall_conversion_percentage"
+            ],
+            "description": "Porcentaje de sesiones totales que terminaron en compra."
+          }
+        ]
+      }
+    },
+    {
+      "target": {
+        "database": "novamarket-data-prod-c3d4",
+        "schema": "commerce_feature",
+        "name": "fea_customer_churn_daily"
+      },
+      "type": "table",
+      "fileName": "definitions/feature/fea_customer_churn_daily.sqlx",
+      "tags": [
+        "feature",
+        "weekly"
+      ],
+      "bigquery": {
+        "labels": {
+          "layer": "feature",
+          "product": "novamarket-commerce"
+        }
+      },
+      "actionDescriptor": {
+        "description": "Tabla de features para el modelo de abandono. Un registro por cliente y fecha de corte, con la etiqueta observada 90 dias despues.",
+        "columns": [
+          {
+            "path": [
+              "snapshot_date"
+            ],
+            "description": "Fecha de corte. Los atributos usan solo informacion anterior o igual a esta fecha."
+          },
+          {
+            "path": [
+              "customer_key"
+            ],
+            "description": "Clave seudonimizada del cliente."
+          },
+          {
+            "path": [
+              "tenure_day_quantity"
+            ],
+            "description": "Dias desde la creacion de la cuenta hasta la fecha de corte."
+          },
+          {
+            "path": [
+              "recency_day_quantity"
+            ],
+            "description": "Dias desde la ultima compra hasta la fecha de corte."
+          },
+          {
+            "path": [
+              "order_quantity_90d"
+            ],
+            "description": "Ordenes completadas en los 90 dias previos al corte."
+          },
+          {
+            "path": [
+              "net_amount_90d"
+            ],
+            "description": "Monto neto comprado en los 90 dias previos al corte."
+          },
+          {
+            "path": [
+              "average_order_amount_90d"
+            ],
+            "description": "Ticket promedio de los 90 dias previos."
+          },
+          {
+            "path": [
+              "distinct_department_quantity_90d"
+            ],
+            "description": "Departamentos distintos comprados en los 90 dias previos."
+          },
+          {
+            "path": [
+              "reorder_percentage_90d"
+            ],
+            "description": "Porcentaje de unidades que fueron recompra en los 90 dias previos."
+          },
+          {
+            "path": [
+              "session_quantity_30d"
+            ],
+            "description": "Sesiones de navegacion en los 30 dias previos."
+          },
+          {
+            "path": [
+              "has_complete_profile_flag"
+            ],
+            "description": "Indica si el cliente tiene el perfil de despacho completo."
+          },
+          {
+            "path": [
+              "is_churned_flag"
+            ],
+            "description": "Etiqueta: verdadero si el cliente no compro en los 90 dias posteriores al corte."
+          }
+        ]
+      }
+    },
+    {
+      "target": {
+        "database": "novamarket-data-prod-c3d4",
+        "schema": "commerce_gold",
+        "name": "CustomerContactList"
+      },
+      "type": "table",
+      "fileName": "definitions/gold/CustomerContactList.sqlx",
+      "tags": [
+        "gold"
+      ],
+      "bigquery": {
+        "labels": {
+          "layer": "gold",
+          "product": "novamarket-commerce"
+        }
+      },
+      "actionDescriptor": {
+        "description": null,
+        "columns": [
+          {
+            "path": [
+              "usr_id"
+            ],
+            "description": null
+          },
+          {
+            "path": [
+              "email"
+            ],
+            "description": "Correo del cliente"
+          },
+          {
+            "path": [
+              "phone"
+            ],
+            "description": null
+          },
+          {
+            "path": [
+              "full_name"
+            ],
+            "description": "Nombre"
+          },
+          {
+            "path": [
+              "total_amt"
+            ],
+            "description": null
+          },
+          {
+            "path": [
+              "created_at"
+            ],
+            "description": null
+          }
+        ]
+      }
+    },
+    {
+      "target": {
+        "database": "novamarket-data-prod-c3d4",
+        "schema": "commerce_gold",
+        "name": "sem_commerce_overview"
+      },
+      "type": "view",
+      "fileName": "definitions/gold/sem_commerce_overview.sqlx",
+      "tags": [
+        "gold",
+        "semantic",
+        "daily"
+      ],
+      "bigquery": {
+        "labels": {
+          "layer": "gold",
+          "product": "novamarket-commerce"
+        }
+      },
+      "actionDescriptor": {
+        "description": "Capa semantica de comercio para consumo por agentes de IA. Una vista ancha y explicita, con una sola definicion de cada metrica.",
+        "columns": [
+          {
+            "path": [
+              "sale_date"
+            ],
+            "description": "Dia calendario de la venta en zona horaria America/Santiago."
+          },
+          {
+            "path": [
+              "department_name"
+            ],
+            "description": "Departamento del catalogo al que pertenece el producto."
+          },
+          {
+            "path": [
+              "product_name"
+            ],
+            "description": "Nombre comercial del producto."
+          },
+          {
+            "path": [
+              "net_sales_amount"
+            ],
+            "description": "Monto neto vendido ese dia para ese producto, excluyendo ordenes canceladas."
+          },
+          {
+            "path": [
+              "item_quantity"
+            ],
+            "description": "Unidades vendidas."
+          },
+          {
+            "path": [
+              "order_quantity"
+            ],
+            "description": "Cantidad de ordenes distintas que incluyeron el producto."
+          },
+          {
+            "path": [
+              "customer_quantity"
+            ],
+            "description": "Clientes distintos que compraron el producto ese dia."
+          },
+          {
+            "path": [
+              "average_unit_price_amount"
+            ],
+            "description": "Precio unitario promedio ponderado por unidades vendidas."
+          },
+          {
+            "path": [
+              "conversion_percentage"
+            ],
+            "description": "Porcentaje de sesiones del departamento que terminaron en compra ese dia."
+          }
+        ]
+      }
+    }
+  ],
+  "declarations": [],
+  "assertions": []
+}

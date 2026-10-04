@@ -1,0 +1,36 @@
+# Emulador local de GCP para los tests de integracion de la ingesta.
+#
+# Que cubre y que no:
+#
+#   Cloud Storage  emulacion completa (REST JSON y XML). Es lo que usan los tests
+#                  de `ingestion/tests/test_gcs_integration.py`.
+#   BigQuery       solo metadatos, inserts en streaming y un subconjunto de SQL.
+#                  No hay motor GoogleSQL real ni load jobs desde GCS, asi que las
+#                  transformaciones de Dataform NO se pueden verificar aqui.
+#   Data Catalog   no soportado. Los policy tags se prueban contra GCP real.
+#   Dataform       no soportado.
+#   Datastream     no soportado.
+#
+# Dicho de otro modo: el emulador sirve para la capa de ingesta y para experimentar con
+# las APIs, no para validar el modelo de datos ni el de privacidad. Conviene saberlo
+# antes de invertir tiempo en intentarlo.
+
+services:
+  floci-gcp:
+    image: floci/floci-gcp:latest
+    container_name: floci-gcp
+    ports:
+      - "4588:4588"
+    environment:
+      FLOCI_GCP_HOSTNAME: floci-gcp
+      FLOCI_GCP_BASE_URL: http://floci-gcp:4588
+    volumes:
+      - floci-data:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:4588/_floci-gcp/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  floci-data:

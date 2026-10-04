@@ -1,0 +1,30 @@
+config {
+  type: "assertion",
+  schema: constants.datasets.work,
+  description: "Falla si aparece una columna con nombre de dato personal en cualquier dataset fuera de la boveda de identidad y de bronze. Es la red de seguridad en tiempo de ejecucion del control que el gate de CI aplica en tiempo de merge.",
+  tags: ["governance", "daily"]
+}
+
+/*
+ * Por que existe este control si el gate de CI ya revisa lo mismo.
+ *
+ * Porque el gate revisa lo que pasa por el repositorio, y no todo lo que termina en
+ * el warehouse pasa por ahi: una tabla creada a mano desde la consola para "una
+ * prueba rapida", un export de un proveedor, un job de otro equipo con permisos sobre
+ * el dataset. Los dos controles miran el mismo riesgo desde lados distintos del
+ * despliegue, y el segundo es el que detecta lo que nunca fue revisado.
+ *
+ * La consulta es intencionalmente conservadora en su lista de patrones: una asercion
+ * que falla seguido se termina desactivando. Los casos dudosos son trabajo del
+ * clasificador, no de esta red.
+ */
+
+SELECT
+  table_schema,
+  table_name,
+  column_name,
+  data_type
+FROM ${constants.projectId}.`region-us-central1`.INFORMATION_SCHEMA.COLUMNS
+WHERE table_schema IN ('commerce_silver', 'commerce_gold', 'commerce_feature')
+  AND table_name != 'mst_customer_identity'
+  AND REGEXP_CONTAINS(LOWER(column_name), r'(^|_)(email|phone|rut|password|full_name|address_line|zip_code|card_number)($|_)')

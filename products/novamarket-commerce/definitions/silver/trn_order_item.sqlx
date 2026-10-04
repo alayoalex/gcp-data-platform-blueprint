@@ -1,0 +1,48 @@
+config {
+  type: "incremental",
+  schema: constants.datasets.silver,
+  description: "Detalle de productos de cada orden, con el monto neto de linea ya calculado. Un registro por producto dentro de una orden.",
+  columns: {
+    order_item_key: "Identificador de la linea de detalle.",
+    order_key: "Identificador de la orden a la que pertenece la linea.",
+    product_key: "Identificador del producto comprado. Une con mst_product.",
+    order_date: "Dia calendario de la orden. Se propaga desde trn_order para poder particionar.",
+    add_to_cart_sequence_number: "Posicion en que el producto fue agregado al carro.",
+    is_reordered_flag: "Indica si el cliente ya habia comprado este producto antes.",
+    item_quantity: "Unidades compradas del producto en esta linea.",
+    unit_price_amount: "Precio unitario aplicado al momento de la compra.",
+    line_net_amount: "Monto neto de la linea: cantidad por precio unitario.",
+    ingestion_datetime: "Momento en que la plataforma ingesto la fila (UTC)."
+  },
+  bigquery: {
+    partitionBy: "order_date",
+    clusterBy: ["product_key"],
+    labels: { layer: "silver", product: "novamarket-commerce", contains_pii: "false" }
+  },
+  tags: ["silver", "hourly"],
+  assertions: { uniqueKey: ["order_item_key"] }
+}
+
+pre_operations {
+  DECLARE reprocess_from DEFAULT (
+    ${when(incremental(),
+      `SELECT COALESCE(DATE_SUB(MAX(order_date), INTERVAL 3 DAY), DATE '2020-01-01') FROM ${self()}`,
+      `SELECT DATE '2020-01-01'`)}
+  )
+}
+
+SELECT
+  itm.id AS order_item_key,
+  itm.order_id AS order_key,
+  itm.product_id AS product_key,
+  ord.order_date,
+  itm.add_to_cart_order AS add_to_cart_sequence_number,
+  itm.reordered AS is_reordered_flag,
+  itm.quantity AS item_quantity,
+  itm.unit_price AS unit_price_amount,
+  ${helpers.lineNetAmount("itm.quantity", "itm.unit_price")} AS line_net_amount,
+  itm.ingestion_datetime
+FROM ${ref("raw_shop_order_item")} AS itm
+JOIN ${ref("trn_order")} AS ord ON ord.order_key = itm.order_id
+WHERE NOT itm.is_deleted_flag
+  AND ord.order_date >= reprocess_from

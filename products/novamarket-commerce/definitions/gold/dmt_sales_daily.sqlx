@@ -1,0 +1,55 @@
+config {
+  type: "table",
+  schema: constants.datasets.gold,
+  description: "Producto de datos de ventas diarias. Un registro por dia, producto y departamento, con unidades, monto neto y clientes distintos. Es la fuente unica de la cifra de venta para reportes y para el agente de analitica.",
+  columns: {
+    sale_date: "Dia calendario de la venta en zona horaria America/Santiago.",
+    product_key: "Identificador del producto vendido.",
+    product_name: "Nombre comercial del producto.",
+    department_name: "Categoria gruesa del catalogo.",
+    order_quantity: "Cantidad de ordenes distintas que incluyeron el producto ese dia.",
+    item_quantity: "Unidades del producto vendidas ese dia.",
+    net_sales_amount: "Monto neto vendido, excluyendo ordenes canceladas.",
+    customer_quantity: "Clientes distintos que compraron el producto ese dia.",
+    average_unit_price_amount: "Precio unitario promedio ponderado por unidades vendidas.",
+    reordered_item_percentage: "Porcentaje de unidades que corresponden a recompras del mismo cliente."
+  },
+  bigquery: {
+    partitionBy: "sale_date",
+    clusterBy: ["department_name", "product_key"],
+    labels: { layer: "gold", product: "novamarket-commerce", contains_pii: "false" }
+  },
+  tags: ["gold", "daily"],
+  assertions: {
+    uniqueKey: ["sale_date", "product_key"],
+    nonNull: ["sale_date", "product_key", "net_sales_amount"]
+  }
+}
+
+/*
+ * Ordenes canceladas excluidas. Es la clase de decision que parece detalle tecnico
+ * y es en realidad una definicion de negocio: determina si "venta" significa
+ * "vendido" o "facturado". Esta escrita en el WHERE, declarada en la descripcion del
+ * activo y fijada en el contrato de datos. Las tres cosas, porque quien lea el
+ * dashboard no va a leer el SQL.
+ */
+
+SELECT
+  ord.order_date AS sale_date,
+  itm.product_key,
+  prd.product_name,
+  prd.department_name,
+  COUNT(DISTINCT ord.order_key) AS order_quantity,
+  SUM(itm.item_quantity) AS item_quantity,
+  SUM(itm.line_net_amount) AS net_sales_amount,
+  COUNT(DISTINCT ord.customer_key) AS customer_quantity,
+  SAFE_DIVIDE(SUM(itm.line_net_amount), SUM(itm.item_quantity)) AS average_unit_price_amount,
+  ROUND(100 * SAFE_DIVIDE(
+    SUM(IF(itm.is_reordered_flag, itm.item_quantity, 0)),
+    SUM(itm.item_quantity)
+  ), 2) AS reordered_item_percentage
+FROM ${ref("trn_order_item")} AS itm
+JOIN ${ref("trn_order")} AS ord ON ord.order_key = itm.order_key
+LEFT JOIN ${ref("mst_product")} AS prd ON prd.product_key = itm.product_key
+WHERE NOT ord.is_cancelled_flag
+GROUP BY sale_date, product_key, product_name, department_name

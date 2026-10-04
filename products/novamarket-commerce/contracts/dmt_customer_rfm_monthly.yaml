@@ -1,0 +1,93 @@
+apiVersion: faro/v1
+kind: DataContract
+
+metadata:
+  name: dmt_customer_rfm_monthly
+  product: novamarket-commerce
+  version: 2.0.0
+  owner: equipo-marketing@novamarket.cl
+  steward: ana.morales@novamarket.cl
+  domain: commerce
+
+spec:
+  asset: novamarket-data-prod-c3d4.commerce_gold.dmt_customer_rfm_monthly
+  layer: GOLD
+  description: >-
+    Segmentacion RFM mensual por cliente. Los quintiles se calculan dentro de cada
+    mes, de modo que el segmento mide posicion relativa entre clientes contemporaneos.
+  grain: [metric_month_date, customer_key]
+  classification: CONFIDENTIAL
+
+  # El grano es por persona, aunque seudonimizada. Eso obliga a declarar la base de
+  # licitud: la segmentacion con fines de marketing directo es interes legitimo, y el
+  # titular puede oponerse. El campo no es decorativo -- es lo que se le muestra a la
+  # autoridad si pregunta por que existe esta tabla.
+  legal_basis:
+    purpose: Segmentacion de clientes para campanias de retencion.
+    basis: interes_legitimo
+    regulation: Ley 21.719 Art. 13
+    opt_out_supported: true
+
+  freshness:
+    max_delay: P35D
+    schedule: "0 5 1 * *"
+    timezone: America/Santiago
+
+  retention: P3Y
+
+  quality:
+    - rule: unique
+      columns: [metric_month_date, customer_key]
+    - rule: accepted_values
+      columns: [rfm_segment_name]
+      values: [champion, loyal, potential, at_risk, hibernating, lost]
+
+  slo:
+    availability: 0.98
+    max_incident_resolution: PT24H
+
+  consumers:
+    - equipo-marketing@novamarket.cl
+    - modelo-propension-sa@novamarket-data-prod-c3d4.iam.gserviceaccount.com
+
+  deprecation_notice: P60D
+
+  schema:
+    - name: metric_month_date
+      type: DATE
+      required: true
+      classification: INTERNAL
+      description: Primer dia del mes al que corresponde la medicion.
+    - name: customer_key
+      type: STRING
+      required: true
+      classification: CONFIDENTIAL
+      description: Clave seudonimizada del cliente.
+    - name: recency_day_quantity
+      type: INT64
+      classification: INTERNAL
+      description: Dias entre la ultima compra y el cierre del mes.
+    - name: frequency_order_quantity
+      type: INT64
+      classification: INTERNAL
+      description: Ordenes completadas en los 12 meses moviles previos.
+    - name: monetary_net_amount
+      type: NUMERIC
+      classification: INTERNAL
+      description: Monto neto comprado en los 12 meses moviles previos.
+    - name: recency_quintile_number
+      type: INT64
+      classification: INTERNAL
+      description: Quintil de recencia, 5 = mas reciente.
+    - name: frequency_quintile_number
+      type: INT64
+      classification: INTERNAL
+      description: Quintil de frecuencia, 5 = mas frecuente.
+    - name: monetary_quintile_number
+      type: INT64
+      classification: INTERNAL
+      description: Quintil de monto, 5 = mayor monto.
+    - name: rfm_segment_name
+      type: STRING
+      classification: INTERNAL
+      description: Segmento resultante del cruce de quintiles.

@@ -1,0 +1,194 @@
+# Pipeline de la plataforma de datos de NovaMarket.
+#
+# El gate corre sobre el merge request, no sobre la rama por defecto.
+#
+# Es toda la idea: un hallazgo despues del merge es un incidente que alguien tiene que
+# priorizar, discutir y agendar, y que mientras tanto ya esta en produccion. El mismo
+# hallazgo antes del merge es una linea de codigo que su autor corrige en dos minutos,
+# mientras todavia tiene el contexto en la cabeza.
+
+stages:
+  - test
+  - compile
+  - gate
+  - deploy
+
+variables:
+  DATAFORM_DIR: products/novamarket-commerce
+  COMPILATION: compilation.json
+  GIT_DEPTH: "0" # el gate compara contratos contra la rama base
+
+default:
+  # Un push nuevo cancela el pipeline anterior del mismo merge request. Sin esto, cinco
+  # pushes seguidos dejan cinco pipelines compitiendo y la nota del MR la escribe el que
+  # termine ultimo, que no es necesariamente el del ultimo commit.
+  interruptible: true
+  retry:
+    max: 1
+    when: [runner_system_failure, stuck_or_timeout_failure]
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - when: never
+
+# ---------------------------------------------------------------------- test
+
+tests:
+  stage: test
+  image: python:3.12-slim
+  cache:
+    key:
+      files: [governance/pyproject.toml]
+    paths: [.cache/pip]
+  variables:
+    PIP_CACHE_DIR: $CI_PROJECT_DIR/.cache/pip
+  script:
+    - pip install --quiet -e "./governance[dev]"
+    - ruff check .
+    - pytest governance/tests ingestion/tests/test_routing.py -q --junitxml=report.xml
+  artifacts:
+    when: always
+    reports:
+      junit: report.xml
+
+# ------------------------------------------------------------------- compile
+
+# Compilar y evaluar son dos jobs porque necesitan runtimes distintos: Node para el CLI
+# de Dataform, Python para Faro. Separarlos evita mantener una imagen con ambos, y el
+# artefacto entre ellos es un solo JSON.
+#
+# `dataform compile` no consulta BigQuery: resuelve refs, includes y variables de entorno
+# de forma local. No necesita credenciales de GCP, y por eso este job puede correr en un
+# runner sin acceso a la nube.
+compile:
+  stage: compile
+  image: node:20-slim
+  script:
+    - npm install -g @dataform/cli@^3.0.0
+    - cd "$DATAFORM_DIR"
+    - dataform install
+    - dataform compile --json > "$CI_PROJECT_DIR/$COMPILATION"
+    - echo "Activos compilados: $(node -e "console.log(require('$CI_PROJECT_DIR/$COMPILATION').tables.length)")"
+  artifacts:
+    paths: [$COMPILATION]
+    expire_in: 1 day
+
+# ---------------------------------------------------------------------- gate
+
+gate:
+  stage: gate
+  image: python:3.12-slim
+  needs: [compile]
+  script:
+    - pip install --quiet -e ./governance
+
+    # El reporte de Code Quality primero y siempre, incluso si el gate va a fallar:
+    # es lo que GitLab muestra en el widget del merge request, anclado a archivo y
+    # linea, distinguiendo los hallazgos nuevos de los que ya existian en la rama base.
+    - |
+      faro check \
+        --source dataform \
+        --input "$COMPILATION" \
+        --contracts "$DATAFORM_DIR/contracts" \
+        --format codequality \
+        --path-prefix "$DATAFORM_DIR" \
+        --out gl-code-quality-report.json \
+        --fail-on none
+
+    # El resumen en Markdown para la nota del merge request. El widget sirve para el
+    # detalle; la nota, para que alguien entienda el veredicto sin abrir nada.
+    - |
+      faro check \
+        --source dataform \
+        --input "$COMPILATION" \
+        --contracts "$DATAFORM_DIR/contracts" \
+        --format md \
+        --out gate-report.md \
+        --fail-on none
+
+    - python scripts/gitlab_mr_note.py gate-report.md
+
+    # Recien ahora se decide el veredicto. Si se pusiera antes, un gate rojo dejaria al
+    # merge request sin reporte y sin nota, que es exactamente cuando mas se necesitan.
+    - |
+      faro check \
+        --source dataform \
+        --input "$COMPILATION" \
+        --contracts "$DATAFORM_DIR/contracts" \
+        --format text \
+        --fail-on block
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths: [gate-report.md]
+    reports:
+      codequality: gl-code-quality-report.json
+
+# -------------------------------------------------------------------- deploy
+
+# Despliegue a dev al mergear, y a prod de forma manual.
+#
+# La autenticacion es Workload Identity Federation: GitLab entrega un JWT firmado
+# (`CI_JOB_JWT_V2` / id_tokens) y GCP lo canjea por credenciales de corta duracion. No
+# hay llaves de service account en variables de CI, que es el secreto que mas se filtra
+# y el que nadie rota.
+.deploy:
+  image: google/cloud-sdk:slim
+  id_tokens:
+    GITLAB_OIDC_TOKEN:
+      aud: https://gitlab.com
+  script:
+    - echo "$GITLAB_OIDC_TOKEN" > /tmp/oidc-token
+    - |
+      gcloud iam workload-identity-pools create-cred-config \
+        "projects/${GCP_PROJECT_NUMBER}/locations/global/workloadIdentityPools/gitlab-pool/providers/gitlab-provider" \
+        --service-account="${DEPLOY_SA}" \
+        --output-file=/tmp/credentials.json \
+        --credential-source-file=/tmp/oidc-token
+    - gcloud auth login --cred-file=/tmp/credentials.json
+    - gcloud config set project "$GCP_PROJECT_ID"
+
+    # Un release de Dataform congela la compilacion; la invocacion la ejecuta. Separarlos
+    # permite saber exactamente que codigo corrio en una ejecucion, meses despues.
+    - |
+      gcloud dataform repositories create-compilation-result \
+        novamarket-commerce \
+        --region="$GCP_REGION" \
+        --git-commitish="$CI_COMMIT_SHA" \
+        --format="value(name)" > /tmp/compilation_result
+    - |
+      gcloud dataform repositories create-workflow-invocation \
+        novamarket-commerce \
+        --region="$GCP_REGION" \
+        --compilation-result="$(cat /tmp/compilation_result)"
+
+deploy:dev:
+  extends: .deploy
+  stage: deploy
+  needs: [gate]
+  environment:
+    name: dev
+  variables:
+    GCP_PROJECT_ID: novamarket-data-dev-a1b2
+    GCP_REGION: us-central1
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+deploy:prod:
+  extends: .deploy
+  stage: deploy
+  needs: ["deploy:dev"]
+  environment:
+    name: prod
+  variables:
+    GCP_PROJECT_ID: novamarket-data-prod-c3d4
+    GCP_REGION: us-central1
+  rules:
+    # Manual y nunca automatico. No porque el gate no sea confiable, sino porque
+    # promover a produccion es una decision de negocio: hay ventanas, hay cierres de mes,
+    # y hay dias en que aunque el cambio sea correcto no es el momento.
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+      allow_failure: false

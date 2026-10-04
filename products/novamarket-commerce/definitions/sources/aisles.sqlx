@@ -1,0 +1,7 @@
+config {
+  type: "declaration",
+  database: constants.projectId,
+  schema: constants.cdcDataset,
+  name: "aisles",
+  description: "Replica CDC de la tabla `aisles` (categoria fina del catalogo)."
+}

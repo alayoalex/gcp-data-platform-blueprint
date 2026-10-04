@@ -1,0 +1,24 @@
+# Configuracion del orquestador Dataform del producto `novamarket-commerce`.
+#
+# `vars` es el unico lugar donde el codigo conoce el entorno. Ninguna definicion
+# escribe un project id literal: todas pasan por `constants.js`, que lee de aqui.
+# Asi el mismo repositorio compila contra dev y contra prod sin ramas divergentes.
+
+defaultProject: novamarket-data-dev-a1b2
+defaultLocation: us-central1
+defaultDataset: commerce_work
+defaultAssertionDataset: commerce_assertions
+dataformCoreVersion: 3.0.0
+
+vars:
+  environment: dev
+  project_id: novamarket-data-dev-a1b2
+  product_name: novamarket-commerce
+  product_service_account: novamarket-commerce-sa@novamarket-data-dev-a1b2.iam.gserviceaccount.com
+  # Proyecto donde viven las taxonomias de policy tags. Es un proyecto aparte y
+  # compartido: los tags son transversales a todos los productos de datos.
+  policy_tag_project: novamarket-governance-a1b2
+  # La zona horaria del negocio, no la del cluster. `sale_date` significa "dia en
+  # Chile continental", y esa decision se declara una vez y se usa en todas partes.
+  business_timezone: America/Santiago
+  source_system: shop

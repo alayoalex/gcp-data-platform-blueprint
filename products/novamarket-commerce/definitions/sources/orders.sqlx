@@ -1,0 +1,7 @@
+config {
+  type: "declaration",
+  database: constants.projectId,
+  schema: constants.cdcDataset,
+  name: "orders",
+  description: "Replica CDC de la tabla `orders`."
+}

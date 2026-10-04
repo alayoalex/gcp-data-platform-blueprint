@@ -1,0 +1,116 @@
+apiVersion: faro/v1
+kind: DataContract
+
+metadata:
+  name: fea_customer_churn_daily
+  product: novamarket-commerce
+  version: 1.1.0
+  owner: equipo-datascience@novamarket.cl
+  steward: ana.morales@novamarket.cl
+  domain: commerce
+
+spec:
+  asset: novamarket-data-prod-c3d4.commerce_feature.fea_customer_churn_daily
+  layer: FEATURE
+  description: >-
+    Tabla de features y etiqueta para el modelo de abandono. Cada fila es un cliente
+    en una fecha de corte; los atributos usan solo informacion anterior al corte y la
+    etiqueta observa los 90 dias posteriores.
+  grain: [snapshot_date, customer_key]
+  classification: CONFIDENTIAL
+
+  # Metadatos especificos de una tabla de features. Sin esto, un modelo entrenado hoy
+  # no se puede auditar en seis meses: nadie recuerda que ventana se uso ni por que.
+  ml:
+    label_column: is_churned_flag
+    label_horizon: P90D
+    feature_windows: [P30D, P90D]
+    point_in_time_correct: true
+    training_serving_skew_check: assert_feature_parity
+    excluded_from_features:
+      - customer_key   # identificador: no es una senal, es una llave
+
+  legal_basis:
+    purpose: Prediccion de abandono para acciones de retencion.
+    basis: interes_legitimo
+    regulation: Ley 21.719 Art. 13
+    automated_decision: false
+    opt_out_supported: true
+
+  freshness:
+    max_delay: P7D
+    schedule: "0 4 * * 1"
+    timezone: America/Santiago
+
+  retention: P2Y
+
+  quality:
+    - rule: unique
+      columns: [snapshot_date, customer_key]
+    - rule: not_null
+      columns: [snapshot_date, customer_key, is_churned_flag]
+    - rule: no_future_leakage
+      columns: [snapshot_date]
+
+  slo:
+    availability: 0.95
+    max_incident_resolution: PT48H
+
+  consumers:
+    - equipo-datascience@novamarket.cl
+    - vertex-training-sa@novamarket-data-prod-c3d4.iam.gserviceaccount.com
+
+  deprecation_notice: P30D
+
+  schema:
+    - name: snapshot_date
+      type: DATE
+      required: true
+      classification: INTERNAL
+      description: Fecha de corte. Los atributos usan solo informacion anterior o igual a esta fecha.
+    - name: customer_key
+      type: STRING
+      required: true
+      classification: CONFIDENTIAL
+      description: Clave seudonimizada del cliente.
+    - name: tenure_day_quantity
+      type: INT64
+      classification: INTERNAL
+      description: Dias desde la creacion de la cuenta hasta el corte.
+    - name: recency_day_quantity
+      type: INT64
+      classification: INTERNAL
+      description: Dias desde la ultima compra hasta el corte.
+    - name: order_quantity_90d
+      type: INT64
+      classification: INTERNAL
+      description: Ordenes completadas en los 90 dias previos.
+    - name: net_amount_90d
+      type: NUMERIC
+      classification: INTERNAL
+      description: Monto neto comprado en los 90 dias previos.
+    - name: average_order_amount_90d
+      type: NUMERIC
+      classification: INTERNAL
+      description: Ticket promedio de los 90 dias previos.
+    - name: distinct_department_quantity_90d
+      type: INT64
+      classification: INTERNAL
+      description: Departamentos distintos comprados en los 90 dias previos.
+    - name: reorder_percentage_90d
+      type: NUMERIC
+      classification: INTERNAL
+      description: Porcentaje de unidades que fueron recompra en los 90 dias previos.
+    - name: session_quantity_30d
+      type: INT64
+      classification: INTERNAL
+      description: Sesiones de navegacion en los 30 dias previos.
+    - name: has_complete_profile_flag
+      type: BOOL
+      classification: INTERNAL
+      description: Indica si el cliente tiene el perfil de despacho completo.
+    - name: is_churned_flag
+      type: BOOL
+      required: true
+      classification: INTERNAL
+      description: Etiqueta observada 90 dias despues del corte.

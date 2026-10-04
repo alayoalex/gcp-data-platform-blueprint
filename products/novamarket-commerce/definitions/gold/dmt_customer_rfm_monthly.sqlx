@@ -1,0 +1,87 @@
+config {
+  type: "table",
+  schema: constants.datasets.gold,
+  description: "Segmentacion RFM mensual de clientes. Un registro por cliente y mes, con recencia, frecuencia y monto, cada uno en quintiles, y el segmento resultante. Alimenta campanias de retencion y el modelo de propension de compra.",
+  columns: {
+    metric_month_date: "Primer dia del mes al que corresponde la medicion.",
+    customer_key: "Clave seudonimizada del cliente.",
+    recency_day_quantity: "Dias transcurridos entre la ultima compra del cliente y el cierre del mes.",
+    frequency_order_quantity: "Ordenes completadas por el cliente en los 12 meses moviles previos.",
+    monetary_net_amount: "Monto neto comprado por el cliente en los 12 meses moviles previos.",
+    recency_quintile_number: "Quintil de recencia, 5 = mas reciente.",
+    frequency_quintile_number: "Quintil de frecuencia, 5 = mas frecuente.",
+    monetary_quintile_number: "Quintil de monto, 5 = mayor monto.",
+    rfm_segment_name: "Segmento resultante: champion, loyal, potential, at_risk, hibernating, lost."
+  },
+  bigquery: {
+    partitionBy: "metric_month_date",
+    clusterBy: ["rfm_segment_name", "customer_key"],
+    labels: { layer: "gold", product: "novamarket-commerce", contains_pii: "false" }
+  },
+  tags: ["gold", "monthly"],
+  assertions: { uniqueKey: ["metric_month_date", "customer_key"] }
+}
+
+WITH month_calendar AS (
+  SELECT month_start_date
+  FROM UNNEST(GENERATE_DATE_ARRAY(
+    DATE_TRUNC(DATE '2020-01-01', MONTH),
+    DATE_TRUNC(CURRENT_DATE('${constants.businessTimezone}'), MONTH),
+    INTERVAL 1 MONTH
+  )) AS month_start_date
+),
+
+customer_month AS (
+  SELECT
+    cal.month_start_date AS metric_month_date,
+    ord.customer_key,
+    DATE_DIFF(
+      LAST_DAY(cal.month_start_date),
+      MAX(ord.order_date),
+      DAY
+    ) AS recency_day_quantity,
+    COUNT(DISTINCT ord.order_key) AS frequency_order_quantity,
+    SUM(itm.line_net_amount) AS monetary_net_amount
+  FROM month_calendar AS cal
+  JOIN ${ref("trn_order")} AS ord
+    ON ord.order_date BETWEEN DATE_SUB(cal.month_start_date, INTERVAL 11 MONTH)
+                          AND LAST_DAY(cal.month_start_date)
+  JOIN ${ref("trn_order_item")} AS itm ON itm.order_key = ord.order_key
+  WHERE NOT ord.is_cancelled_flag
+  GROUP BY metric_month_date, customer_key
+),
+
+/*
+ * Los quintiles se calculan DENTRO de cada mes, no sobre toda la historia. Un cliente
+ * no deberia cambiar de segmento porque la base de clientes crecio: el segmento mide
+ * su posicion relativa entre sus contemporaneos. Calcularlo global es el error
+ * silencioso mas comun en un RFM, y solo se nota cuando alguien pregunta por que
+ * todos los clientes antiguos son "champion".
+ */
+scored AS (
+  SELECT
+    *,
+    NTILE(5) OVER (PARTITION BY metric_month_date ORDER BY recency_day_quantity DESC) AS recency_quintile_number,
+    NTILE(5) OVER (PARTITION BY metric_month_date ORDER BY frequency_order_quantity) AS frequency_quintile_number,
+    NTILE(5) OVER (PARTITION BY metric_month_date ORDER BY monetary_net_amount) AS monetary_quintile_number
+  FROM customer_month
+)
+
+SELECT
+  metric_month_date,
+  customer_key,
+  recency_day_quantity,
+  frequency_order_quantity,
+  monetary_net_amount,
+  recency_quintile_number,
+  frequency_quintile_number,
+  monetary_quintile_number,
+  CASE
+    WHEN recency_quintile_number >= 4 AND frequency_quintile_number >= 4 THEN 'champion'
+    WHEN recency_quintile_number >= 3 AND frequency_quintile_number >= 3 THEN 'loyal'
+    WHEN recency_quintile_number >= 4 AND frequency_quintile_number <= 2 THEN 'potential'
+    WHEN recency_quintile_number = 2 AND frequency_quintile_number >= 3 THEN 'at_risk'
+    WHEN recency_quintile_number = 2 THEN 'hibernating'
+    ELSE 'lost'
+  END AS rfm_segment_name
+FROM scored

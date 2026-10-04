@@ -1,0 +1,99 @@
+# Contrato del producto de datos de ventas diarias.
+#
+# Un contrato es una promesa operable, no documentacion. Cada campo de aqui se
+# verifica automaticamente: el esquema contra la tabla real, la frescura contra una
+# asercion en tiempo de ejecucion, la clasificacion contra el clasificador de
+# privacidad. Lo que no se pueda verificar no deberia estar escrito aqui.
+
+apiVersion: faro/v1
+kind: DataContract
+
+metadata:
+  name: dmt_sales_daily
+  product: novamarket-commerce
+  version: 1.2.0
+  owner: equipo-comercial@novamarket.cl
+  steward: ana.morales@novamarket.cl
+  domain: commerce
+
+spec:
+  asset: novamarket-data-prod-c3d4.commerce_gold.dmt_sales_daily
+  layer: GOLD
+  description: >-
+    Ventas netas diarias por producto. Excluye ordenes canceladas. La fecha
+    corresponde al dia calendario en America/Santiago, no a UTC.
+  grain: [sale_date, product_key]
+  classification: INTERNAL
+
+  freshness:
+    max_delay: P1D
+    schedule: "0 6 * * *"
+    timezone: America/Santiago
+
+  retention: P5Y
+
+  quality:
+    - rule: unique
+      columns: [sale_date, product_key]
+    - rule: not_null
+      columns: [sale_date, product_key, net_sales_amount]
+    - rule: non_negative
+      columns: [net_sales_amount, item_quantity]
+
+  slo:
+    availability: 0.99
+    max_incident_resolution: PT4H
+
+  consumers:
+    - equipo-finanzas@novamarket.cl
+    - equipo-comercial@novamarket.cl
+    - agente-analitica-sa@novamarket-data-prod-c3d4.iam.gserviceaccount.com
+
+  # Ventana de aviso antes de un cambio incompatible. El gate la exige; el equipo
+  # duenio la respeta. Sin un numero acordado, "avisamos con tiempo" no significa nada.
+  deprecation_notice: P30D
+
+  schema:
+    - name: sale_date
+      type: DATE
+      required: true
+      classification: INTERNAL
+      description: Dia calendario de la venta en zona horaria America/Santiago.
+    - name: product_key
+      type: INT64
+      required: true
+      classification: INTERNAL
+      description: Identificador del producto vendido.
+    - name: product_name
+      type: STRING
+      classification: INTERNAL
+      description: Nombre comercial del producto.
+    - name: department_name
+      type: STRING
+      classification: INTERNAL
+      description: Categoria gruesa del catalogo.
+    - name: order_quantity
+      type: INT64
+      classification: INTERNAL
+      description: Cantidad de ordenes distintas que incluyeron el producto ese dia.
+    - name: item_quantity
+      type: INT64
+      classification: INTERNAL
+      description: Unidades del producto vendidas ese dia.
+    - name: net_sales_amount
+      type: NUMERIC
+      required: true
+      classification: INTERNAL
+      description: Monto neto vendido, excluyendo ordenes canceladas.
+    - name: customer_quantity
+      type: INT64
+      classification: INTERNAL
+      description: Clientes distintos que compraron el producto ese dia.
+    - name: average_unit_price_amount
+      type: NUMERIC
+      classification: INTERNAL
+      description: Precio unitario promedio ponderado por unidades vendidas.
+    - name: reordered_item_percentage
+      type: NUMERIC
+      classification: INTERNAL
+      description: Porcentaje de unidades que corresponden a recompras del mismo cliente.

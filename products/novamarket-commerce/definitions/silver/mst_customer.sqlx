@@ -1,0 +1,68 @@
+config {
+  type: "table",
+  schema: constants.datasets.silver,
+  description: "Maestro de clientes seudonimizado. Un registro por cuenta de la tienda, con los atributos que la analitica necesita y ninguno que permita identificar a la persona. Es la tabla que consumen todos los productos de datos aguas abajo.",
+  columns: {
+    customer_key: "Clave seudonimizada y estable de la cuenta. Es la llave de union con el resto del modelo. No es reversible sin la sal, que vive en Secret Manager.",
+    email_domain_name: "Dominio del correo de la cuenta, sin la parte local. Conserva el valor analitico (segmentar corporativo vs. personal) sin conservar el identificador.",
+    customer_city_name: "Ciudad o comuna declarada en el perfil de despacho.",
+    customer_region_name: "Region declarada en el perfil de despacho.",
+    customer_country_code: "Pais del perfil en formato ISO 3166-1 alfa-2.",
+    has_phone_flag: "Indica si la cuenta tiene telefono registrado. Reemplaza al telefono: responde la pregunta analitica real sin traer el dato.",
+    has_complete_profile_flag: "Indica si el perfil tiene ciudad, region y pais informados.",
+    is_active_flag: "Indica si la cuenta esta activa en el sistema de origen.",
+    account_created_date: "Dia de creacion de la cuenta.",
+    account_updated_datetime: "Momento de la ultima modificacion de la cuenta en el origen.",
+    ingestion_datetime: "Momento en que la plataforma ingesto la fila (UTC)."
+  },
+  bigquery: {
+    clusterBy: ["customer_key"],
+    labels: { layer: "silver", product: "novamarket-commerce", contains_pii: "false" }
+  },
+  tags: ["silver", "hourly"],
+  assertions: {
+    uniqueKey: ["customer_key"],
+    nonNull: ["customer_key", "account_created_date"]
+  }
+}
+
+/*
+ * Esta es la transformacion que hace la mayor parte del trabajo de privacidad de
+ * toda la plataforma, y cabe en una consulta.
+ *
+ * Tres decisiones, en orden de importancia:
+ *
+ * 1. `user_id` no cruza a silver. Cruza `customer_key`, su hash con sal. Un
+ *    identificador interno parece inocuo, pero es la llave que reconecta cualquier
+ *    tabla de esta capa con la identidad real; convertirlo en seudonimo rompe esa
+ *    cadena para todo lo que este aguas abajo, de una sola vez.
+ *
+ * 2. El correo se reduce a su dominio. Casi siempre que alguien pide "el email" en
+ *    un modelo analitico, la pregunta real es de segmentacion, y el dominio la
+ *    responde. Vale la pena preguntar antes de copiar la columna entera.
+ *
+ * 3. El telefono se convierte en un booleano. Mismo razonamiento: nadie llama por
+ *    telefono desde un dashboard.
+ *
+ * Quien necesite el dato identificable de verdad -- soporte, cumplimiento, un DSAR --
+ * lo busca en `mst_customer_identity`, que esta bajo policy tags y tiene su propia
+ * lista de acceso. La analitica no paga el costo de ese riesgo.
+ */
+
+SELECT
+  ${helpers.pseudonymize("usr.id")} AS customer_key,
+  LOWER(SPLIT(usr.email, '@')[SAFE_OFFSET(1)]) AS email_domain_name,
+  prf.city AS customer_city_name,
+  prf.state AS customer_region_name,
+  UPPER(COALESCE(prf.country, 'CL')) AS customer_country_code,
+  prf.phone IS NOT NULL AS has_phone_flag,
+  (prf.city IS NOT NULL AND prf.state IS NOT NULL AND prf.country IS NOT NULL) AS has_complete_profile_flag,
+  usr.is_active AS is_active_flag,
+  DATE(usr.created_at, '${constants.businessTimezone}') AS account_created_date,
+  usr.updated_at AS account_updated_datetime,
+  usr.ingestion_datetime
+FROM ${ref("raw_shop_user")} AS usr
+LEFT JOIN ${ref("raw_shop_user_profile")} AS prf
+  ON prf.user_id = usr.id
+ AND NOT prf.is_deleted_flag
+WHERE NOT usr.is_deleted_flag

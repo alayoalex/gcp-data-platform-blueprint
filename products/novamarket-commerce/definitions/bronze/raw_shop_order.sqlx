@@ -1,0 +1,23 @@
+js {
+  const { cdcLanding } = require("includes/bronze.js");
+
+  cdcLanding({
+    name: "raw_shop_order",
+    sourceTable: "orders",
+    primaryKey: "order_id",
+    description: "Copia fiel de las ordenes de compra registradas por la tienda.",
+    tags: ["hourly"],
+    columns: {
+    order_id: "Identificador de la orden en el sistema de origen.",
+    user_id: "Identificador de la cuenta que realizo la orden.",
+    order_number: "Numero correlativo de la orden para esa cuenta.",
+    order_dow: "Dia de la semana de la orden, como entero 0-6. Nombre heredado del origen.",
+    order_hour: "Hora del dia de la orden, como entero 0-23.",
+    days_since_prior: "Dias transcurridos desde la orden anterior de la misma cuenta.",
+    status: "Estado de la orden en el origen.",
+    total_amount: "Monto total de la orden en la moneda del origen.",
+    created_at: "Momento de creacion de la orden en el origen.",
+    updated_at: "Momento de la ultima modificacion en el origen."
+    },
+  });
+}

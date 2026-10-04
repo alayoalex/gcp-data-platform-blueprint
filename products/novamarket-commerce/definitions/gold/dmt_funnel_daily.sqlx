@@ -1,0 +1,52 @@
+config {
+  type: "table",
+  schema: constants.datasets.gold,
+  description: "Embudo de conversion diario de la tienda. Un registro por dia y departamento, con sesiones en cada etapa y las tasas de paso entre etapas.",
+  columns: {
+    funnel_date: "Dia calendario del embudo en zona horaria America/Santiago.",
+    department_name: "Categoria gruesa del catalogo. 'sin_producto' agrupa los eventos que no referencian un producto.",
+    session_quantity: "Sesiones distintas con al menos un evento ese dia.",
+    view_session_quantity: "Sesiones que vieron al menos un producto.",
+    cart_session_quantity: "Sesiones que agregaron al menos un producto al carro.",
+    checkout_session_quantity: "Sesiones que iniciaron el proceso de pago.",
+    purchase_session_quantity: "Sesiones que completaron una compra.",
+    view_to_cart_percentage: "Porcentaje de sesiones con vista que llegaron al carro.",
+    cart_to_purchase_percentage: "Porcentaje de sesiones con carro que completaron la compra.",
+    overall_conversion_percentage: "Porcentaje de sesiones totales que terminaron en compra."
+  },
+  bigquery: {
+    partitionBy: "funnel_date",
+    clusterBy: ["department_name"],
+    labels: { layer: "gold", product: "novamarket-commerce", contains_pii: "false" }
+  },
+  tags: ["gold", "daily"],
+  assertions: { uniqueKey: ["funnel_date", "department_name"] }
+}
+
+WITH session_stage AS (
+  SELECT
+    evt.event_date AS funnel_date,
+    COALESCE(prd.department_name, 'sin_producto') AS department_name,
+    evt.session_key,
+    LOGICAL_OR(evt.event_type_code = 'view') AS reached_view_flag,
+    LOGICAL_OR(evt.event_type_code = 'add_to_cart') AS reached_cart_flag,
+    LOGICAL_OR(evt.event_type_code = 'checkout') AS reached_checkout_flag,
+    LOGICAL_OR(evt.event_type_code = 'purchase') AS reached_purchase_flag
+  FROM ${ref("evt_session_event")} AS evt
+  LEFT JOIN ${ref("mst_product")} AS prd ON prd.product_key = evt.product_key
+  GROUP BY funnel_date, department_name, session_key
+)
+
+SELECT
+  funnel_date,
+  department_name,
+  COUNT(*) AS session_quantity,
+  COUNTIF(reached_view_flag) AS view_session_quantity,
+  COUNTIF(reached_cart_flag) AS cart_session_quantity,
+  COUNTIF(reached_checkout_flag) AS checkout_session_quantity,
+  COUNTIF(reached_purchase_flag) AS purchase_session_quantity,
+  ROUND(100 * SAFE_DIVIDE(COUNTIF(reached_cart_flag), COUNTIF(reached_view_flag)), 2) AS view_to_cart_percentage,
+  ROUND(100 * SAFE_DIVIDE(COUNTIF(reached_purchase_flag), COUNTIF(reached_cart_flag)), 2) AS cart_to_purchase_percentage,
+  ROUND(100 * SAFE_DIVIDE(COUNTIF(reached_purchase_flag), COUNT(*)), 2) AS overall_conversion_percentage
+FROM session_stage
+GROUP BY funnel_date, department_name

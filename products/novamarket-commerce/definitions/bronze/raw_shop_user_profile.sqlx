@@ -1,0 +1,24 @@
+js {
+  const { cdcLanding } = require("includes/bronze.js");
+
+  cdcLanding({
+    name: "raw_shop_user_profile",
+    sourceTable: "user_profiles",
+    primaryKey: "user_id",
+    description: "Copia fiel del perfil de contacto y direccion de despacho de cada cuenta.",
+    tags: ["hourly"],
+    columns: {
+    id: "Identificador del perfil en el sistema de origen.",
+    user_id: "Identificador de la cuenta a la que pertenece el perfil.",
+    phone: "Telefono de contacto.",
+    address_line1: "Primera linea de la direccion de despacho.",
+    address_line2: "Segunda linea de la direccion de despacho.",
+    city: "Ciudad o comuna de despacho.",
+    state: "Region o estado de despacho.",
+    zip_code: "Codigo postal de despacho.",
+    country: "Pais de despacho en formato ISO 3166-1 alfa-2.",
+    created_at: "Momento de creacion del perfil en el origen.",
+    updated_at: "Momento de la ultima modificacion en el origen."
+    },
+  });
+}

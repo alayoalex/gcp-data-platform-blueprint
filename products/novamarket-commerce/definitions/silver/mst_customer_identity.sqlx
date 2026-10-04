@@ -1,0 +1,75 @@
+config {
+  type: "table",
+  schema: constants.datasets.silver,
+  description: "Boveda de identidad: el puente entre la clave seudonimizada y la persona real. Existe para atender solicitudes de titulares de datos, soporte y cumplimiento. NO se consume desde productos analiticos y no alimenta ninguna tabla gold.",
+  columns: {
+    customer_key: {
+      description: "Clave seudonimizada de la cuenta. Es la unica columna que esta tabla comparte con el resto del modelo.",
+      bigqueryPolicyTags: [policy_tags.person.reference]
+    },
+    customer_email: {
+      description: "Correo electronico de la cuenta.",
+      bigqueryPolicyTags: [policy_tags.person.contact]
+    },
+    customer_full_name: {
+      description: "Nombre completo declarado por la persona.",
+      bigqueryPolicyTags: [policy_tags.person.name]
+    },
+    customer_phone: {
+      description: "Telefono de contacto declarado en el perfil.",
+      bigqueryPolicyTags: [policy_tags.person.contact]
+    },
+    customer_address_line: {
+      description: "Direccion de despacho completa, concatenando ambas lineas del origen.",
+      bigqueryPolicyTags: [policy_tags.person.location]
+    },
+    customer_postal_code: {
+      description: "Codigo postal de despacho.",
+      bigqueryPolicyTags: [policy_tags.person.location]
+    },
+    account_created_date: "Dia de creacion de la cuenta.",
+    ingestion_datetime: "Momento en que la plataforma ingesto la fila (UTC)."
+  },
+  bigquery: {
+    clusterBy: ["customer_key"],
+    labels: { layer: "silver", product: "novamarket-commerce", contains_pii: "true", data_vault: "true" }
+  },
+  tags: ["silver", "restricted", "daily"],
+  assertions: { uniqueKey: ["customer_key"] }
+}
+
+/*
+ * El patron es una boveda de identidad, y la idea completa es esta: el dato personal
+ * no desaparece de la plataforma -- desaparecerlo seria imposible y tampoco deseable,
+ * porque hay obligaciones legales que exigen poder responder "que datos tienen de mi" --
+ * pero se concentra en UN activo, con UNA lista de acceso, en vez de diluirse por
+ * cincuenta tablas donde nadie sabe quien lo puede leer.
+ *
+ * Tres consecuencias practicas:
+ *
+ * - El control de acceso se audita mirando una tabla, no el warehouse entero.
+ * - Un DSAR (derecho de acceso o supresion) se resuelve con una consulta acotada.
+ * - El dia que haya que borrar a una persona, se borra aqui y el seudonimo que quedo
+ *   en las tablas analiticas deja de ser reconectable. Los agregados historicos
+ *   sobreviven; la identidad no.
+ *
+ * Los policy tags de las columnas no son decoracion: sin el rol
+ * `roles/datacatalog.categoryFineGrainedReader` sobre la taxonomia correspondiente,
+ * un SELECT sobre esta tabla falla en vez de devolver la columna. El control es de
+ * BigQuery, no del modelador.
+ */
+
+SELECT
+  ${helpers.pseudonymize("usr.id")} AS customer_key,
+  usr.email AS customer_email,
+  usr.full_name AS customer_full_name,
+  prf.phone AS customer_phone,
+  TRIM(CONCAT(COALESCE(prf.address_line1, ''), ' ', COALESCE(prf.address_line2, ''))) AS customer_address_line,
+  prf.zip_code AS customer_postal_code,
+  DATE(usr.created_at, '${constants.businessTimezone}') AS account_created_date,
+  usr.ingestion_datetime
+FROM ${ref("raw_shop_user")} AS usr
+LEFT JOIN ${ref("raw_shop_user_profile")} AS prf
+  ON prf.user_id = usr.id
+ AND NOT prf.is_deleted_flag
+WHERE NOT usr.is_deleted_flag

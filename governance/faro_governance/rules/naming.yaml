@@ -1,0 +1,236 @@
+# Convenciones de nombres de Faro.
+#
+# Este archivo ES la politica. No hay reglas de naming escondidas en el codigo:
+# el motor (faro_governance.naming) solo interpreta lo que aqui se declara.
+# Para adaptar la plataforma a otra empresa se edita este YAML, no el Python.
+
+version: 1
+
+thresholds:
+  table: 0.80
+  column: 0.80
+  dataset: 0.85
+
+# Severidad del hallazgo segun la capa. Un nombre malo en gold llega al consumidor
+# final y a los agentes de IA, asi que bloquea; en bronze se avisa, porque el nombre
+# suele venir impuesto por el sistema de origen.
+severity_by_layer:
+  BRONZE: WARN
+  SILVER: BLOCK
+  GOLD: BLOCK
+  FEATURE: BLOCK
+  UNKNOWN: WARN
+
+# Pesos por criterio. Suman 1.0 dentro de cada tipo de activo.
+weights:
+  table:
+    snake_case: 0.22
+    full_words: 0.22
+    layer_structure: 0.20
+    no_redundancy: 0.14
+    readable: 0.10
+    documented: 0.12
+  column:
+    snake_case: 0.22
+    full_words: 0.22
+    data_category: 0.22
+    no_redundancy: 0.12
+    readable: 0.10
+    documented: 0.12
+  dataset:
+    snake_case: 0.30
+    full_words: 0.28
+    layer_structure: 0.24
+    readable: 0.08
+    documented: 0.10
+
+readable:
+  max_length: 50
+  max_tokens: 6
+  min_tokens: 1
+
+# Estructura esperada por capa. `prefixes` son los aceptados; el primero es el
+# recomendado cuando hay que sugerir un nombre.
+layer_structure:
+  BRONZE:
+    prefixes: ["raw"]
+    pattern: "raw_<sistema_origen>_<entidad>"
+    example: "raw_shop_order_item"
+  SILVER:
+    prefixes: ["mst", "trn", "evt"]
+    pattern: "<mst|trn|evt>_<entidad>[_<calificador>]"
+    example: "mst_customer, trn_order_item, evt_session_event"
+  GOLD:
+    # Los prefijos de gold describen PARA QUE sirve el activo, no su tipo fisico.
+    # `vw_` seria lo segundo: al consumidor no le importa si detras hay una vista o
+    # una tabla materializada, y si le importa que sea un data mart, un reporte o la
+    # capa semantica que consumen los agentes.
+    #   dmt = data mart | rpt = reporte | sem = capa semantica
+    prefixes: ["dmt", "rpt", "sem"]
+    pattern: "<dmt|rpt|sem>_<producto>_<alcance>[_<grano>]"
+    example: "dmt_sales_daily, sem_commerce_overview"
+  FEATURE:
+    prefixes: ["fea"]
+    pattern: "fea_<entidad>_<proposito>_<grano>"
+    example: "fea_customer_churn_daily"
+  UNKNOWN:
+    prefixes: []
+    pattern: ""
+    example: ""
+
+# Nombres de dataset esperados: <dominio>_<capa>
+dataset_structure:
+  pattern: "<dominio>_<capa>"
+  suffixes: ["bronze", "silver", "gold", "feature"]
+
+# Abreviaturas prohibidas -> expansion sugerida.
+# Esta es la lista que mas se personaliza por cliente: lo que en una empresa es
+# jerga interna aceptada, en otra es ruido.
+abbreviations:
+  qty: quantity
+  amt: amount
+  amnt: amount
+  num: number
+  nbr: number
+  cnt: count
+  desc: description
+  dt: date
+  ts: timestamp
+  dow: day_of_week
+  doy: day_of_year
+  addr: address
+  cust: customer
+  prod: product
+  txn: transaction
+  trx: transaction
+  ord: order_reference
+  usr: user
+  acct: account
+  pct: percentage
+  perc: percentage
+  avg: average
+  tot: total
+  val: value
+  idx: index
+  cd: code
+  nm: name
+  fl: flag
+  yr: year
+  mth: month
+  qtr: quarter
+  src: source
+  tgt: target
+  dest: destination
+  msg: message
+  cfg: configuration
+  info: information
+  aux: auxiliary
+  tmp: temporary
+  bkp: backup
+  hist: history
+
+# Siglas y tokens de dos/tres letras que SI se aceptan tal cual.
+allowed_acronyms:
+  - id
+  # `at` es el sufijo sancionado para marcas de tiempo (`created_at`). Sin esta
+  # entrada, la regla de palabras completas castiga la convencion que la regla de
+  # categoria semantica exige.
+  - at
+  - url
+  - uri
+  - ip
+  - sku
+  - utm
+  - iso
+  - api
+  - gmv
+  - aov
+  - ltv
+  - rfm
+  - csv
+  - json
+  - utc
+  - cl
+  - us
+  - br
+  - pe
+  - ar
+  - clp
+  - usd
+  - brl
+
+# Palabras que no aportan significado dentro de un nombre de columna.
+noise_tokens: [data, value, field, column, table, info, the, of, a]
+
+# Categoria semantica -> sufijos aceptados. El primero es el recomendado.
+# La categoria se infiere del tipo BigQuery y, cuando el tipo es ambiguo
+# (STRING, INT64, NUMERIC), de pistas en el propio nombre.
+data_categories:
+  identifier:
+    suffixes: ["_id", "_key"]
+    data_types: []
+    name_hints: [id, identifier, key, uuid, guid]
+  date:
+    suffixes: ["_date"]
+    data_types: [DATE]
+    name_hints: []
+  datetime:
+    suffixes: ["_datetime", "_timestamp", "_at"]
+    data_types: [TIMESTAMP, DATETIME]
+    name_hints: []
+  time:
+    suffixes: ["_time"]
+    data_types: [TIME]
+    name_hints: []
+  flag:
+    suffixes: ["_flag"]
+    prefixes: ["is_", "has_"]
+    data_types: [BOOL, BOOLEAN]
+    name_hints: []
+  amount:
+    suffixes: ["_amount", "_price", "_cost"]
+    data_types: []
+    name_hints: [amount, price, cost, revenue, total, subtotal, discount, fee, tax, salary]
+  percentage:
+    suffixes: ["_percentage", "_rate", "_ratio"]
+    data_types: []
+    name_hints: [percentage, percent, rate, ratio, share]
+  quantity:
+    suffixes: ["_quantity", "_count", "_number"]
+    data_types: []
+    name_hints: [quantity, count, number, units]
+  name:
+    suffixes: ["_name"]
+    data_types: []
+    name_hints: [name, label, title]
+  description:
+    suffixes: ["_description", "_text", "_comment"]
+    data_types: []
+    name_hints: [description, comment, note, text, remark]
+  code:
+    suffixes: ["_code", "_status", "_type"]
+    data_types: []
+    name_hints: [code, status, state, type, category]
+  free:
+    # Categoria de escape: no exige sufijo. Se usa cuando nada calza y el tipo
+    # no es concluyente, para no castigar nombres legitimos como `email`.
+    suffixes: []
+    data_types: []
+    name_hints: []
+
+# Sufijo de ventana temporal permitido DESPUES del sufijo semantico.
+# `net_amount_90d` es un nombre correcto: la categoria es `amount` y `_90d` califica
+# la ventana de calculo. Sin esta regla, toda tabla de features viola la convencion,
+# que es una forma segura de que el equipo de ciencia de datos deje de usar el gate.
+window_suffix_pattern: '_(\d+[dwmy]|\d+(day|week|month|year)s?)$'
+
+# Columnas de sistema aceptadas sin evaluar categoria semantica.
+system_columns:
+  - ingestion_datetime
+  - ingestion_date
+  - source_system_name
+  - record_hash_code
+  - is_deleted_flag
+  - valid_from_datetime
+  - valid_to_datetime
+  - is_current_flag

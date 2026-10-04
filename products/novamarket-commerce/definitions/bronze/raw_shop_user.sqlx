@@ -1,0 +1,21 @@
+js {
+  const { cdcLanding } = require("includes/bronze.js");
+
+  cdcLanding({
+    name: "raw_shop_user",
+    sourceTable: "users",
+    primaryKey: "id",
+    description: "Copia fiel de las cuentas de usuario de la tienda. Contiene datos personales sin tratar: el acceso a este dataset esta restringido al service account del producto.",
+    tags: ["hourly"],
+    columns: {
+    id: "Identificador de la cuenta en el sistema de origen.",
+    email: "Correo electronico de la cuenta.",
+    hashed_password: "Hash de la contrasenia. Columna descartada antes de silver.",
+    full_name: "Nombre completo declarado por la persona.",
+    is_active: "Indica si la cuenta esta activa en el origen.",
+    is_admin: "Indica si la cuenta tiene privilegios administrativos.",
+    created_at: "Momento de creacion de la cuenta en el origen.",
+    updated_at: "Momento de la ultima modificacion en el origen."
+    },
+  });
+}

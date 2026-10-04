@@ -1,0 +1,272 @@
+# Catalogo de clasificacion de datos personales y sensibles.
+#
+# Cada entrada mapea una senal detectable en el esquema (nombre de columna + tipo)
+# a: una categoria, un nivel de sensibilidad, el policy tag de BigQuery que debe
+# llevar la columna, y el tratamiento esperado en cada capa.
+#
+# El orden importa: gana la primera regla que calce, asi que las mas especificas
+# van arriba. `password` antes que `name` evita que `password_name` se clasifique mal.
+#
+# Marco de referencia: Ley 21.719 (Chile), GDPR Art. 4 y 9. Las categorias
+# `special_category` corresponden a los datos sensibles del Art. 2 letra g) de la
+# ley chilena, que exigen base de licitud reforzada.
+
+version: 1
+
+# Umbral de confianza bajo el cual el hallazgo se marca para revision humana
+# en vez de decidirse automaticamente.
+review_threshold: 0.70
+
+# Tratamiento minimo exigido por capa segun sensibilidad.
+# ALLOW = puede viajar en claro | HASH = seudonimizar | MASK = enmascarar
+# DROP = no debe existir en esa capa
+treatment_matrix:
+  RESTRICTED:
+    BRONZE: ALLOW      # bronze es la copia fiel del origen, con acceso cerrado
+    SILVER: HASH
+    GOLD: DROP
+    FEATURE: DROP
+  CONFIDENTIAL:
+    BRONZE: ALLOW
+    SILVER: MASK
+    GOLD: DROP
+    FEATURE: HASH
+  INTERNAL:
+    BRONZE: ALLOW
+    SILVER: ALLOW
+    GOLD: ALLOW
+    FEATURE: ALLOW
+  PUBLIC:
+    BRONZE: ALLOW
+    SILVER: ALLOW
+    GOLD: ALLOW
+    FEATURE: ALLOW
+
+categories:
+  - id: credential
+    label: Credencial de acceso
+    sensitivity: RESTRICTED
+    policy_tag: security.credential
+    special_category: false
+    rationale: >-
+      Una credencial no tiene ningun uso analitico. No es un dato a proteger,
+      es un dato que no debe salir del sistema transaccional.
+    patterns:
+      - '(^|_)password($|_)'
+      - '(^|_)passwd($|_)'
+      - 'hashed_password'
+      - '(^|_)secret($|_)'
+      - '(^|_)token($|_)'
+      - 'api_key'
+      - 'private_key'
+      - 'salt($|_)'
+    forbidden_in: [BRONZE, SILVER, GOLD, FEATURE]
+
+  - id: national_id
+    label: Identificador nacional
+    sensitivity: RESTRICTED
+    policy_tag: person.national_id
+    special_category: false
+    rationale: >-
+      RUT, DNI, CPF, SSN. Identificador directo, univoco y no revocable:
+      una fuga no se puede remediar cambiandolo.
+    patterns:
+      - '(^|_)rut($|_)'
+      - '(^|_)run($|_)'
+      - '(^|_)dni($|_)'
+      - '(^|_)cpf($|_)'
+      - '(^|_)cuit($|_)'
+      - '(^|_)ssn($|_)'
+      - 'tax_id'
+      - 'national_id'
+      - 'document_number'
+      - 'passport'
+
+  - id: payment_instrument
+    label: Medio de pago
+    sensitivity: RESTRICTED
+    policy_tag: financial.payment_instrument
+    special_category: false
+    rationale: Alcance PCI-DSS. El PAN no debe persistirse fuera del entorno certificado.
+    patterns:
+      - 'card_number'
+      - 'credit_card'
+      - '(^|_)pan($|_)'
+      - '(^|_)cvv($|_)'
+      - '(^|_)iban($|_)'
+      - 'bank_account'
+      - 'account_number'
+
+  - id: special_category
+    label: Dato sensible (Art. 2 g, Ley 21.719)
+    sensitivity: RESTRICTED
+    policy_tag: person.special_category
+    special_category: true
+    rationale: >-
+      Salud, biometria, origen etnico, afiliacion politica o sindical, vida sexual,
+      creencias. Requiere consentimiento explicito y base de licitud reforzada.
+    patterns:
+      - '(^|_)health($|_)'
+      - 'medical'
+      - 'diagnosis'
+      - 'disability'
+      - 'biometric'
+      - 'fingerprint'
+      - 'ethnicity'
+      - '(^|_)race($|_)'
+      - 'religion'
+      - 'political'
+      - 'union_member'
+      - 'sexual_orientation'
+      - 'criminal_record'
+
+  - id: contact
+    label: Dato de contacto
+    sensitivity: CONFIDENTIAL
+    policy_tag: person.contact
+    special_category: false
+    rationale: Identificador directo y canal de contacto. Base de la mayoria de los DSAR.
+    patterns:
+      - '(^|_)email($|_)'
+      - 'mail_address'
+      - '(^|_)phone($|_)'
+      - 'mobile_number'
+      - 'telephone'
+      - 'whatsapp'
+
+  - id: person_name
+    label: Nombre de persona
+    sensitivity: CONFIDENTIAL
+    policy_tag: person.name
+    special_category: false
+    patterns:
+      - 'full_name'
+      - 'first_name'
+      - 'last_name'
+      - 'given_name'
+      - 'family_name'
+      - 'surname'
+      - 'customer_name'
+      - 'user_name'
+      - 'contact_name'
+
+  - id: online_identifier
+    label: Identificador en linea
+    sensitivity: CONFIDENTIAL
+    policy_tag: person.online_identifier
+    special_category: false
+    rationale: >-
+      GDPR Art. 4(1) los trata como datos personales: permiten reidentificar
+      cruzando con otras fuentes aunque no lleven nombre.
+    patterns:
+      - 'ip_address'
+      - 'device_id'
+      - 'session_id'
+      - 'cookie_id'
+      - 'user_agent'
+      - 'advertising_id'
+      - 'fingerprint_id'
+
+  - id: location
+    label: Ubicacion de persona
+    sensitivity: CONFIDENTIAL
+    policy_tag: person.location
+    special_category: false
+    rationale: >-
+      La direccion exacta identifica; la comuna o region agregadas normalmente no.
+      Por eso `city` y `country` quedan en INTERNAL y no aqui.
+    patterns:
+      - 'address_line'
+      - 'street_address'
+      - '(^|_)address($|_)'
+      - 'zip_code'
+      - 'postal_code'
+      - 'latitude'
+      - 'longitude'
+      - 'geolocation'
+
+  - id: person_reference
+    label: Referencia a persona
+    sensitivity: CONFIDENTIAL
+    policy_tag: person.reference
+    special_category: false
+    rationale: >-
+      Una FK a la tabla de personas no es PII por si sola, pero convierte cualquier
+      tabla que la contenga en un dato personal indirecto: basta un join.
+      Debe seudonimizarse al cruzar a silver.
+    patterns:
+      - '^user_id$'
+      - '^customer_id$'
+      - '^client_id$'
+      - '^person_id$'
+      - '^employee_id$'
+
+  - id: demographic
+    label: Dato demografico
+    sensitivity: CONFIDENTIAL
+    policy_tag: person.demographic
+    special_category: false
+    patterns:
+      - 'birth_date'
+      - 'date_of_birth'
+      - '(^|_)dob($|_)'
+      - '(^|_)age($|_)'
+      - '(^|_)gender($|_)'
+      - 'marital_status'
+      - 'nationality'
+
+  - id: compensation
+    label: Remuneracion
+    sensitivity: CONFIDENTIAL
+    policy_tag: financial.compensation
+    special_category: false
+    patterns:
+      - '(^|_)salary($|_)'
+      - '(^|_)wage($|_)'
+      - 'compensation'
+      - 'income_amount'
+
+  - id: commercial
+    label: Dato comercial interno
+    sensitivity: INTERNAL
+    policy_tag: commercial.internal
+    special_category: false
+    rationale: >-
+      No identifica personas pero tampoco es publico: margenes, costos y precios
+      de compra son informacion competitiva.
+    patterns:
+      - 'cost_amount'
+      - 'margin'
+      - 'purchase_price'
+      - 'discount_rate'
+
+# Bovedas de identidad: activos que existen para CONCENTRAR el dato personal
+# identificable bajo una unica lista de acceso. En ellos el control es el policy tag
+# mas el IAM de la taxonomia, no la seudonimizacion -- seudonimizar una boveda la
+# dejaria sin proposito. Se declaran con la label `data_vault: "true"`.
+#
+# La exencion no es gratuita: solo aplica si TODA columna clasificada lleva su policy
+# tag. Una boveda sin etiquetar es simplemente una tabla con datos personales.
+vault_label: data_vault
+
+# Senales que ELEVAN la sensibilidad de un hallazgo dudoso.
+# Si la tabla vive en un dataset con estas palabras, sube la confianza.
+context_boosters:
+  dataset: [customer, user, person, employee, patient, client, hr, payroll]
+  table: [customer, user, profile, person, employee, contact, account]
+
+# Nombres que parecen PII pero no lo son. Evitan falsos positivos caros.
+# `email_flag` es un booleano de preferencia, no una direccion de correo.
+exclusions:
+  # `email_domain_name` es precisamente el resultado de haber quitado el correo.
+  # Marcarla como dato de contacto castiga la mitigacion correcta.
+  - '_domain_name$'
+  - '_domain$'
+  - '_flag$'
+  - '_count$'
+  - '_quantity$'
+  - '_percentage$'
+  - '^has_'
+  - '^is_'
+  - '_hash_code$'
+  - '_surrogate_key$'

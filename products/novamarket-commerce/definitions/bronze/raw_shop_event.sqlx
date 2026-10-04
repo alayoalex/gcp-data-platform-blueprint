@@ -1,0 +1,21 @@
+js {
+  const { cdcLanding } = require("includes/bronze.js");
+
+  cdcLanding({
+    name: "raw_shop_event",
+    sourceTable: "user_events",
+    primaryKey: "id",
+    description: "Copia fiel del clickstream de la tienda: vistas, agregados al carro y conversiones.",
+    tags: ["hourly"],
+    columns: {
+    id: "Identificador del evento en el origen.",
+    user_id: "Identificador de la cuenta que genero el evento, nulo si es anonimo.",
+    session_id: "Identificador de la sesion de navegacion.",
+    event_type: "Tipo de evento: view, add_to_cart, checkout u otro.",
+    event_data: "Carga util del evento en formato JSON.",
+    page_url: "URL de la pagina donde ocurrio el evento.",
+    product_id: "Identificador del producto asociado al evento, si aplica.",
+    created_at: "Momento en que ocurrio el evento en el origen."
+    },
+  });
+}

@@ -1,0 +1,38 @@
+config {
+  type: "table",
+  schema: constants.datasets.silver,
+  description: "Maestro de productos con su jerarquia de catalogo resuelta. Un registro por producto, con departamento y pasillo desnormalizados para evitar que cada consumidor repita el mismo join de tres tablas.",
+  columns: {
+    product_key: "Identificador del producto. Coincide con el del sistema de origen.",
+    product_name: "Nombre comercial del producto.",
+    aisle_name: "Categoria fina del catalogo a la que pertenece el producto.",
+    department_name: "Categoria gruesa del catalogo a la que pertenece el producto.",
+    list_price_amount: "Precio de lista vigente, en la moneda del sistema de origen.",
+    is_active_flag: "Indica si el producto esta publicado en la tienda.",
+    product_created_date: "Dia de alta del producto en el catalogo.",
+    ingestion_datetime: "Momento en que la plataforma ingesto la fila (UTC)."
+  },
+  bigquery: {
+    clusterBy: ["product_key"],
+    labels: { layer: "silver", product: "novamarket-commerce", contains_pii: "false" }
+  },
+  tags: ["silver", "daily"],
+  assertions: {
+    uniqueKey: ["product_key"],
+    nonNull: ["product_key", "product_name"]
+  }
+}
+
+SELECT
+  prd.product_id AS product_key,
+  prd.product_name,
+  asl.aisle AS aisle_name,
+  dpt.department AS department_name,
+  prd.price AS list_price_amount,
+  prd.is_active AS is_active_flag,
+  ${helpers.businessDate("prd.created_at")} AS product_created_date,
+  prd.ingestion_datetime
+FROM ${ref("raw_shop_product")} AS prd
+LEFT JOIN ${ref("aisles")} AS asl ON asl.aisle_id = prd.aisle_id
+LEFT JOIN ${ref("departments")} AS dpt ON dpt.department_id = prd.department_id
+WHERE NOT prd.is_deleted_flag

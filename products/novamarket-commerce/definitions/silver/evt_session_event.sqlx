@@ -1,0 +1,58 @@
+config {
+  type: "incremental",
+  schema: constants.datasets.silver,
+  description: "Eventos de navegacion de la tienda con la sesion seudonimizada. Un registro por evento. Es la base del analisis de embudo de conversion.",
+  columns: {
+    event_key: "Identificador del evento.",
+    session_key: {
+      description: "Clave seudonimizada de la sesion de navegacion. El identificador de sesion original es un identificador en linea y no cruza a esta capa en claro.",
+      bigqueryPolicyTags: [policy_tags.person.online_identifier]
+    },
+    customer_key: "Clave seudonimizada del cliente, nula si el evento es anonimo.",
+    event_date: "Dia calendario del evento en la zona horaria del negocio.",
+    event_datetime: "Momento exacto del evento (UTC).",
+    event_type_code: "Tipo de evento: view, add_to_cart, checkout, purchase.",
+    product_key: "Identificador del producto asociado al evento, nulo si no aplica.",
+    page_path_name: "Ruta de la pagina donde ocurrio el evento, sin dominio ni parametros de consulta.",
+    is_authenticated_flag: "Indica si el evento ocurrio en una sesion con cuenta iniciada.",
+    ingestion_datetime: "Momento en que la plataforma ingesto la fila (UTC)."
+  },
+  bigquery: {
+    partitionBy: "event_date",
+    clusterBy: ["event_type_code", "session_key"],
+    labels: { layer: "silver", product: "novamarket-commerce", contains_pii: "false" }
+  },
+  tags: ["silver", "hourly"],
+  assertions: { uniqueKey: ["event_key"] }
+}
+
+pre_operations {
+  DECLARE reprocess_from DEFAULT (
+    ${when(incremental(),
+      `SELECT COALESCE(DATE_SUB(MAX(event_date), INTERVAL 1 DAY), DATE '2020-01-01') FROM ${self()}`,
+      `SELECT DATE '2020-01-01'`)}
+  )
+}
+
+/*
+ * La URL se recorta a su ruta a proposito. Los parametros de consulta de una tienda
+ * arrastran identificadores de campania, tokens de sesion y, con frecuencia
+ * incomoda, el correo del usuario cuando alguien llego desde un enlace de email
+ * marketing. Guardar la URL completa es una fuga de datos personales que nadie
+ * declara porque nadie la ve: esta dentro de un STRING.
+ */
+
+SELECT
+  evt.id AS event_key,
+  ${helpers.pseudonymize("evt.session_id")} AS session_key,
+  IF(evt.user_id IS NULL, NULL, ${helpers.pseudonymize("evt.user_id")}) AS customer_key,
+  ${helpers.businessDate("evt.created_at")} AS event_date,
+  evt.created_at AS event_datetime,
+  evt.event_type AS event_type_code,
+  evt.product_id AS product_key,
+  REGEXP_EXTRACT(evt.page_url, r'^(?:https?://[^/]+)?([^?#]*)') AS page_path_name,
+  evt.user_id IS NOT NULL AS is_authenticated_flag,
+  evt.ingestion_datetime
+FROM ${ref("raw_shop_event")} AS evt
+WHERE NOT evt.is_deleted_flag
+  AND ${helpers.businessDate("evt.created_at")} >= reprocess_from

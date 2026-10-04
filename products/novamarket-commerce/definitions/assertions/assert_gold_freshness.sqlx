@@ -1,0 +1,29 @@
+config {
+  type: "assertion",
+  schema: constants.datasets.work,
+  description: "Falla si algun producto de datos gold quedo mas atrasado que la frescura prometida en su contrato. Es el control que convierte el contrato en algo exigible y no en un documento.",
+  tags: ["gold", "daily"]
+}
+
+/*
+ * Los umbrales replican `spec.freshness.max_delay` de cada contrato. Duplicar un
+ * valor en dos archivos es una deuda conocida; la alternativa -- generar esta
+ * asercion desde los contratos en tiempo de compilacion -- es el paso natural
+ * siguiente y esta descrito en docs/09-operacion.md. Mientras tanto, el gate de CI
+ * verifica que ambos numeros coincidan.
+ */
+
+WITH freshness AS (
+  SELECT 'dmt_sales_daily' AS asset_name, MAX(sale_date) AS last_date, 1 AS max_delay_day_quantity
+  FROM ${ref("dmt_sales_daily")}
+  UNION ALL
+  SELECT 'dmt_funnel_daily', MAX(funnel_date), 1
+  FROM ${ref("dmt_funnel_daily")}
+  UNION ALL
+  SELECT 'dmt_customer_rfm_monthly', MAX(metric_month_date), 35
+  FROM ${ref("dmt_customer_rfm_monthly")}
+)
+
+SELECT asset_name, last_date, max_delay_day_quantity
+FROM freshness
+WHERE DATE_DIFF(CURRENT_DATE('${constants.businessTimezone}'), last_date, DAY) > max_delay_day_quantity

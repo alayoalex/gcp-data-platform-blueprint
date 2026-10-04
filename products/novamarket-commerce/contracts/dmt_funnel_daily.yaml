@@ -1,0 +1,88 @@
+apiVersion: faro/v1
+kind: DataContract
+
+metadata:
+  name: dmt_funnel_daily
+  product: novamarket-commerce
+  version: 1.0.0
+  owner: equipo-producto@novamarket.cl
+  steward: ana.morales@novamarket.cl
+  domain: commerce
+
+spec:
+  asset: novamarket-data-prod-c3d4.commerce_gold.dmt_funnel_daily
+  layer: GOLD
+  description: >-
+    Embudo de conversion diario por departamento, medido a nivel de sesion.
+    Una sesion cuenta en una etapa si registro al menos un evento de esa etapa.
+  grain: [funnel_date, department_name]
+  classification: INTERNAL
+
+  freshness:
+    max_delay: P1D
+    schedule: "0 6 * * *"
+    timezone: America/Santiago
+
+  retention: P2Y
+
+  quality:
+    - rule: unique
+      columns: [funnel_date, department_name]
+    - rule: range
+      columns: [overall_conversion_percentage]
+      min: 0
+      max: 100
+
+  slo:
+    availability: 0.98
+    max_incident_resolution: PT8H
+
+  consumers:
+    - equipo-producto@novamarket.cl
+    - equipo-marketing@novamarket.cl
+
+  deprecation_notice: P30D
+
+  schema:
+    - name: funnel_date
+      type: DATE
+      required: true
+      classification: INTERNAL
+      description: Dia calendario del embudo en zona horaria America/Santiago.
+    - name: department_name
+      type: STRING
+      required: true
+      classification: INTERNAL
+      description: Categoria gruesa del catalogo.
+    - name: session_quantity
+      type: INT64
+      classification: INTERNAL
+      description: Sesiones distintas con al menos un evento ese dia.
+    - name: view_session_quantity
+      type: INT64
+      classification: INTERNAL
+      description: Sesiones que vieron al menos un producto.
+    - name: cart_session_quantity
+      type: INT64
+      classification: INTERNAL
+      description: Sesiones que agregaron al menos un producto al carro.
+    - name: checkout_session_quantity
+      type: INT64
+      classification: INTERNAL
+      description: Sesiones que iniciaron el proceso de pago.
+    - name: purchase_session_quantity
+      type: INT64
+      classification: INTERNAL
+      description: Sesiones que completaron una compra.
+    - name: view_to_cart_percentage
+      type: NUMERIC
+      classification: INTERNAL
+      description: Porcentaje de sesiones con vista que llegaron al carro.
+    - name: cart_to_purchase_percentage
+      type: NUMERIC
+      classification: INTERNAL
+      description: Porcentaje de sesiones con carro que completaron la compra.
+    - name: overall_conversion_percentage
+      type: NUMERIC
+      classification: INTERNAL
+      description: Porcentaje de sesiones totales que terminaron en compra.

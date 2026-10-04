@@ -1,0 +1,7 @@
+config {
+  type: "declaration",
+  database: constants.projectId,
+  schema: constants.cdcDataset,
+  name: "users",
+  description: "Replica CDC de la tabla `users` de la aplicacion transaccional."
+}

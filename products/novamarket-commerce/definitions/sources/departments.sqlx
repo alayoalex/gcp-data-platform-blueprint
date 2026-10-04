@@ -1,0 +1,7 @@
+config {
+  type: "declaration",
+  database: constants.projectId,
+  schema: constants.cdcDataset,
+  name: "departments",
+  description: "Replica CDC de la tabla `departments` (categoria gruesa del catalogo)."
+}
